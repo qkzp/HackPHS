@@ -133,3 +133,78 @@ def test_material_dropdown_maps_to_installed_profile(tmp_path):
         app.v['filament_profile'].set('Custom material profile');app.update()
         assert app.material_choice.get()=='Custom · Custom material profile'
     finally:app.close()
+
+@pytest.mark.gui
+@pytest.mark.integration
+def test_fea_mode_requires_load_and_exports_simulation_reports(cube,tmp_path,monkeypatch):
+    import tkinter as tk
+    import time
+    from tkinter import messagebox,filedialog
+    from AeroSlice.gui import Application
+    from AeroSlice.main import make_examples
+    from AeroSlice.slicer import DEFAULT_EXECUTABLE
+    if not Path(DEFAULT_EXECUTABLE).is_file():pytest.skip('Installed OrcaSlicer required')
+    try:
+        probe=tk.Tk();probe.destroy()
+    except tk.TclError:pytest.skip('Graphical Tk session required')
+    make_examples(tmp_path/'examples');app=Application(tmp_path/'examples');errors=[]
+    monkeypatch.setattr(messagebox,'showerror',lambda *args,**kwargs:errors.append(args))
+    app.config_path=tmp_path/'config.json'
+    try:
+        app.set_model(cube);app.v['simulation_mode'].set('FEA direct search (experimental)');app.update_actions()
+        assert app.sections['simulation']['open']
+        app.start_optimization()
+        assert errors and not app.busy and app.report is None
+        errors.clear();app.v['fea_force'].set('1');app.v['fea_mesh'].set('4');app.v['fea_tolerance'].set('.5')
+        app.v['protected'].set('10,10,10');app.v['maximum'].set('20');app.config_data['density_set']=[10,20]
+        app.v['candidate_count'].set('3');app.v['output'].set(str(tmp_path/'work'))
+        app.start_optimization();deadline=time.monotonic()+60
+        while app.busy and time.monotonic()<deadline:
+            app.update();time.sleep(.03)
+        assert not app.busy and not errors,errors
+        assert app.report['status']=='AUTOMATED SUCCESS',app.report['message']
+        assert 'PHYSICALLY UNVALIDATED' in app.dashboard_text.get('1.0','end')
+        destination=tmp_path/'exports';destination.mkdir()
+        monkeypatch.setattr(filedialog,'askdirectory',lambda **kwargs:str(destination))
+        app.export_button.invoke();app.update()
+        assert len(list(destination.rglob('optimized.gcode')))==1
+        assert len(list(destination.rglob('fea_selected.png')))==1
+        assert len(list(destination.rglob('fea_search.csv')))==1
+        assert not list(destination.rglob('*.3mf'))
+    finally:app.close()
+
+@pytest.mark.gui
+@pytest.mark.integration
+def test_weight_first_fea_comparison_without_thrust(cube,tmp_path,monkeypatch):
+    import tkinter as tk
+    import time
+    from tkinter import messagebox
+    from AeroSlice.gui import Application
+    from AeroSlice.main import make_examples
+    from AeroSlice.slicer import DEFAULT_EXECUTABLE
+    if not Path(DEFAULT_EXECUTABLE).is_file():pytest.skip('Installed OrcaSlicer required')
+    try:
+        probe=tk.Tk();probe.destroy()
+    except tk.TclError:pytest.skip('Graphical Tk session required')
+    make_examples(tmp_path/'examples');app=Application(tmp_path/'examples');errors=[]
+    monkeypatch.setattr(messagebox,'showerror',lambda *args,**kwargs:errors.append(args))
+    app.config_path=tmp_path/'config.json'
+    try:
+        assert app.v['simulation_mode'].get()=='Weight saving' and app.fea_settings() is None
+        app.set_model(cube);app.v['simulation_mode'].set('Weight saving + FEA comparison');app.update_actions()
+        assert app.v['fea_force'].get()==''
+        assert not app.sections['simulation_absolute']['open']
+        assert app.fea_settings().assessment=='relative_stiffness'
+        assert app.fea_settings().force_n==1
+        app.v['fea_mesh'].set('4');app.v['fea_tolerance'].set('.5');app.v['fea_retention'].set('50')
+        app.v['protected'].set('10,10,10');app.v['maximum'].set('20');app.config_data['density_set']=[10,20]
+        app.v['candidate_count'].set('3');app.v['output'].set(str(tmp_path/'work'));app.start_optimization()
+        deadline=time.monotonic()+60
+        while app.busy and time.monotonic()<deadline:
+            app.update();time.sleep(.03)
+        assert not app.busy and not errors,errors
+        assert app.report['status']=='AUTOMATED SUCCESS',app.report['message']
+        assert app.report['fea_selected']['relative_stiffness_ratio']>=.5
+        assert 'actual thrust is not an input' in app.dashboard_text.get('1.0','end')
+        assert app.report['savings_percent_estimated']>0
+    finally:app.close()

@@ -17,4 +17,7 @@ if [ ! -x .venv/bin/python ]; then
   "$task_python" -m venv .venv
   .venv/bin/python -m pip install -r AeroSlice/requirements.txt
 fi
+if ! .venv/bin/python -c 'import scipy' >/dev/null 2>&1; then
+  .venv/bin/python -m pip install -r AeroSlice/requirements.txt
+fi
 exec .venv/bin/python -m AeroSlice.main

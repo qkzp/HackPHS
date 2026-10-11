@@ -241,3 +241,17 @@ run retained under `evidence/final_demo/` for this environment's executed eviden
 
 Installed executable `--help`, exported native files and actual slicing tests take
 precedence over documentation examples for runtime flag/schema verification.
+
+## Iteration 3: experimental simulation-guided search
+
+The default **Weight saving** workflow reduces estimated print weight while
+preserving the outer shape, without requiring thrust data. Optional **Weight
+saving + FEA comparison** evaluates all allowed regional infill combinations
+on two meshes using a normalized reference load, then slices a shortlist meeting
+an editable relative-stiffness target. No actual thrust value is required.
+Material defaults and the retention target are uncalibrated demonstration
+assumptions. The separate advanced **FEA direct search (experimental)** mode
+supports actual loads and absolute screening limits. Neither establishes
+physical strength or actual thruster performance.
+
+See [FEA setup, equations, reports and limitations](FEA.md).

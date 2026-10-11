@@ -108,6 +108,13 @@ class Application(tk.Tk):
         self.search_box.pack(side='left');self.search_box.bind('<<ComboboxSelected>>',self.apply_search_choice)
         self.search_help=self.variable('search_help','More designs give a wider comparison and take longer. This does not certify strength.')
         ttk.Label(setup,textvariable=self.search_help,wraplength=490,style='Hint.TLabel').pack(anchor='w',pady=(8,12))
+        method=ttk.Frame(setup);method.pack(fill='x',pady=(0,10))
+        ttk.Label(method,text='Optimization method').pack(side='left',padx=(0,10))
+        self.variable('simulation_mode','Weight saving')
+        self.simulation_box=ttk.Combobox(method,textvariable=self.v['simulation_mode'],state='readonly',width=29,
+            values=['Weight saving','Weight saving + FEA comparison','FEA direct search (experimental)'])
+        self.simulation_box.pack(side='left')
+        self.simulation_box.bind('<<ComboboxSelected>>',lambda event:self.update_actions())
         save=ttk.Frame(setup);save.pack(fill='x')
         ttk.Label(save,text='Save working files in').pack(anchor='w')
         self.variable('output',self.config_data.get('output_folder',str(Path.cwd()/'outputs')))
@@ -125,6 +132,25 @@ class Application(tk.Tk):
         self.field(settings,'demand','Custom demand (0–1)','',6,1)
         self.field(settings,'fixed_mass','Other moving mass (g)','',7,0)
         ttk.Label(settings,text=DISCLAIMER+' Blank custom demand uses the load-path heuristic; unknown hardware mass can stay blank.',wraplength=490,style='Hint.TLabel').grid(row=8,column=0,columnspan=4,sticky='w',padx=5,pady=8)
+        simulation=self.disclosure(left,'simulation','Simulation: material, loads & limits')
+        ttk.Label(simulation,text='Weight saving + FEA comparison uses a normalized reference load to compare stiffness with your original design; no thrust value is needed. The full support face is clamped. Material defaults are demonstration assumptions. Actual force and strength limits apply only to the advanced FEA direct search mode.',wraplength=490,style='Hint.TLabel').grid(row=0,column=0,columnspan=4,sticky='w',padx=5,pady=8)
+        fields=[('fea_force_axis','Comparison / force axis','z'),('fea_retention','Retain relative stiffness (%)',75),
+                ('fea_e_xy','XY modulus (MPa)',2000),('fea_e_z','Z modulus (MPa)',1000),
+                ('fea_g_xz','XZ/YZ shear modulus',400),('fea_nu_xy','XY Poisson ratio',.3),
+                ('fea_nu_xz','XZ Poisson ratio',.25),('fea_e_power','Stiffness density power',2),
+                ('fea_mesh','Coarse mesh cells',6),('fea_tolerance','Mesh tolerance (0–0.5)',.2)]
+        for i,(key,label,value) in enumerate(fields):
+            self.field(simulation,key,label,value,1+i//2,i%2,choices=['x','y','z'] if key=='fea_force_axis' else None)
+        self.field(simulation,'fea_source','Material data source','DEMONSTRATION assumptions; uncalibrated',6,width=31)
+        ttk.Label(simulation,text='The default 75% relative-stiffness target is an adjustable comparison rule, not a validated strength threshold. All density combinations within regional bounds are simulated on two meshes; design count controls the slicing shortlist. The outer model shape stays the same. No buckling, fatigue or impact analysis.',wraplength=490,style='Hint.TLabel').grid(row=7,column=0,columnspan=4,sticky='w',padx=5,pady=8)
+        actual_container=ttk.Frame(simulation);actual_container.grid(row=8,column=0,columnspan=4,sticky='ew')
+        actual=self.disclosure(actual_container,'simulation_absolute','Actual-load assessment (advanced)')
+        absolute_fields=[('fea_force','Total signed force (N)',''),('fea_strength_xy','XY strength input (MPa)',25),
+                         ('fea_strength_z','Z strength input (MPa)',12),('fea_shear','Shear strength (MPa)',8),
+                         ('fea_s_power','Strength density power',1.5),('fea_factor','Screening safety factor',2),
+                         ('fea_deflection','Max displacement (mm)',.5)]
+        for i,(key,label,value) in enumerate(absolute_fields):self.field(actual,key,label,value,i//2,i%2)
+        ttk.Label(actual,text='These inputs apply only to the advanced FEA direct search mode. Weight saving and relative-stiffness comparison do not require actual force or these strength limits.',wraplength=490,style='Hint.TLabel').grid(row=4,column=0,columnspan=4,sticky='w',padx=5,pady=8)
         integration=self.disclosure(left,'printer','Printer setup & troubleshooting')
         ttk.Label(integration,text='OrcaSlicer turns a model into printer instructions. The installed Adventurer 5M setup is preselected. Check that its nozzle and material match your printer.',wraplength=490,style='Hint.TLabel').grid(row=0,column=0,columnspan=3,sticky='w',padx=5,pady=8)
         self.field(integration,'orca','OrcaSlicer program',self.config_data['orca_executable'],1,width=34)
@@ -344,6 +370,22 @@ class Application(tk.Tk):
         s.validate();return s
 
     def profiles(self):return Profiles(self.v['printer_profile'].get(),self.v['process_profile'].get(),self.v['filament_profile'].get())
+
+    def fea_settings(self):
+        mode=self.v['simulation_mode'].get()
+        if mode=='Weight saving':return None
+        relative=mode=='Weight saving + FEA comparison'
+        from .fea import FEASettings
+        if not relative and not self.v['fea_force'].get().strip():raise ValueError('Enter total force for advanced FEA, or choose “Weight saving + FEA comparison” to compare designs without a thrust value.')
+        values={name:float(self.v[key].get()) for name,key in [
+            ('e_xy_mpa','fea_e_xy'),('e_z_mpa','fea_e_z'),('g_xz_mpa','fea_g_xz'),
+            ('nu_xy','fea_nu_xy'),('nu_xz','fea_nu_xz'),('strength_xy_mpa','fea_strength_xy'),
+            ('strength_z_mpa','fea_strength_z'),('shear_mpa','fea_shear'),('stiffness_power','fea_e_power'),
+            ('strength_power','fea_s_power'),('safety_factor','fea_factor'),('max_displacement_mm','fea_deflection'),('mesh_tolerance','fea_tolerance')]}
+        s=FEASettings(**values,force_n=1. if relative else float(self.v['fea_force'].get()),
+                      assessment='relative_stiffness' if relative else 'absolute_limits',minimum_stiffness_ratio=float(self.v['fea_retention'].get())/100,
+                      force_axis=self.v['fea_force_axis'].get(),mesh_cells=int(self.v['fea_mesh'].get()),material_source=self.v['fea_source'].get())
+        s.validate();return s
     def slicer(self):return OrcaSlicer(self.v['orca'].get(),self.v['profile_root'].get(),self.config_data['slicer_timeout_s'],self.cancel)
 
     def update_actions(self):
@@ -351,6 +393,15 @@ class Application(tk.Tk):
         self.upload_button.configure(state='disabled' if self.busy else 'normal',text='Replace model…' if self.model else 'Add 3D model…')
         self.search_box.configure(state='disabled' if self.busy else 'readonly')
         self.material_box.configure(state='disabled' if self.busy else 'readonly')
+        self.simulation_box.configure(state='disabled' if self.busy else 'readonly')
+        if self.v['simulation_mode'].get()!='Weight saving':
+            self.search_help.set('FEA simulates every allowed infill combination. This design count controls how many candidates are then compared in OrcaSlicer.')
+        else:
+            self.search_help.set('More designs give a wider comparison and take longer. This does not certify strength.')
+        if self.v['simulation_mode'].get()!='Weight saving' and not self.sections['simulation']['open']:
+            self.toggle_section('simulation')
+        if self.v['simulation_mode'].get()=='FEA direct search (experimental)' and not self.sections['simulation_absolute']['open']:
+            self.toggle_section('simulation_absolute')
         self.generate_button.configure(state='normal' if loaded else 'disabled')
         available=Path(self.v['orca'].get()).is_file() and all(self.v[k].get().strip() for k in ('printer_profile','process_profile','filament_profile'))
         self.optimize_button.configure(state='normal' if loaded and (available or self.manual.get()) else 'disabled',text='Prepare manual instructions' if self.manual.get() else 'Find a lighter print')
@@ -426,19 +477,25 @@ class Application(tk.Tk):
     def generate(self):
         if not self.model:return
         try:
-            settings=self.settings();model=self.model
+            settings=self.settings();model=self.model;simulation=self.v['simulation_mode'].get()!='Weight saving'
             def operation():
                 regions,notes=make_regions(model.oriented(settings.rotation),settings)
-                return {'kind':'candidates','regions':regions,'candidates':generate_candidates(regions,settings),'notes':notes}
+                if simulation:
+                    from .fea import density_options
+                    from .optimizer import Candidate
+                    candidates=[Candidate(f'fea_{i:03d}',values,'Awaiting FEA evaluation.',False) for i,values in enumerate(density_options(settings))]
+                    notes=['Direct-search density grid preview only. No FEA or slicing has been performed.']
+                else:candidates=generate_candidates(regions,settings)
+                return {'kind':'candidates','regions':regions,'candidates':candidates,'notes':notes}
             self.worker(operation)
         except Exception as exc:self.error(exc)
 
     def start_optimization(self):
         if not self.model:return
         try:
-            settings=self.settings();model=self.model;slicer=self.slicer();profiles=self.profiles();output=Path(self.v['output'].get());manual=self.manual.get()
+            settings=self.settings();fea=self.fea_settings();model=self.model;slicer=self.slicer();profiles=self.profiles();output=Path(self.v['output'].get());manual=self.manual.get()
             self.save_preferences()
-            self.worker(lambda:optimize(model,settings,output,slicer,profiles,lambda msg:self.queue.put(('progress',msg)),manual))
+            self.worker(lambda:optimize(model,settings,output,slicer,profiles,lambda msg:self.queue.put(('progress',msg)),manual,fea))
         except Exception as exc:self.error(exc)
 
     def check_compatibility(self):
@@ -541,6 +598,21 @@ class Application(tk.Tk):
             self.result_hint.set('No optimized export is available. Open Your results for the exact issue and manual next steps.')
             lines=['COMPARISON NEEDS ATTENTION',report['message'],'','You can adjust the advanced settings or prepare manual instructions in Printer setup & troubleshooting.',*report.get('manual_steps',[])]
         lines+=['','Saved working folder: '+report['run_directory'],'','Strength has not been independently verified. Climb results and material savings do not prove stiffness.']
+        if report.get('fea'):
+            search=report['fea'];prediction=report.get('fea_selected')
+            lines+=['','FEA DIRECT SEARCH · PREDICTIONS, PHYSICALLY UNVALIDATED',
+                    f"Tested {search['combinations_tested']} combinations; {search['feasible_count']} passed both mesh resolutions.",
+                    ('Normalized reference load for comparison; actual thrust is not an input.' if search['inputs']['assessment']=='relative_stiffness' else f"Load: {search['inputs']['force_n']:g} N along {search['inputs']['force_axis'].upper()}."),
+                    f"Support assumption: full {search['support_axis'].upper()} {search['support_face']} face clamped; comparison direction {search['inputs']['force_axis'].upper()}.",
+                    'Material input source: '+search['inputs']['material_source']]
+            if prediction:
+                if search['inputs']['assessment']=='relative_stiffness':
+                    lines += [f"Selected predicted relative stiffness: {100*prediction['relative_stiffness_ratio']:.1f}% of baseline (target {100*search['inputs']['minimum_stiffness_ratio']:.1f}%).",
+                              'Absolute strength and thrust performance were not assessed. fea_selected.png shows illustrative reference-load fields.']
+                else:
+                    lines += [f"Selected predicted displacement: {prediction['max_displacement_mm']:.5g} mm.",
+                              f"Selected screening stress utilization: {prediction['screening_utilization']:.3f} (limit 1).",
+                              'See fea_selected.png for stress and displacement maps. No physical strength or failure load was verified.']
         self.dashboard_write('\n'.join(lines))
         if status=='FAILED':
             self.book.select(self.dashboard_tab)
@@ -560,7 +632,8 @@ class Application(tk.Tk):
             for name in ('baseline.gcode','optimized.gcode'):
                 shutil.copy2(self.report['exports'][name],target/name)
             for name in ('report.json','comparison.csv','compatibility_report.json',
-                         'validation_report.txt','infill_heatmap.png','README.md','NOTES.md'):
+                         'validation_report.txt','infill_heatmap.png','README.md','NOTES.md',
+                         'fea_search.json','fea_search.csv','fea_selected.png'):
                 if (source/name).is_file():shutil.copy2(source/name,target/name)
             self.print_export_folder=target;self.open_button.configure(text='Open saved folder')
             self.status.set(f'G-code saved to {target}. Review optimized.gcode in a G-code preview before printing.')

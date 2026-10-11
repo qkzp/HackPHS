@@ -1,0 +1,29 @@
+{
+  "assessment": "relative_stiffness",
+  "minimum_stiffness_ratio": 0.75,
+  "force_n": 1.0,
+  "force_axis": "z",
+  "e_xy_mpa": 2000.0,
+  "e_z_mpa": 1000.0,
+  "nu_xy": 0.3,
+  "nu_xz": 0.25,
+  "g_xz_mpa": 400.0,
+  "strength_xy_mpa": 25.0,
+  "strength_z_mpa": 12.0,
+  "shear_mpa": 8.0,
+  "stiffness_power": 2.0,
+  "strength_power": 1.5,
+  "safety_factor": 2.0,
+  "max_displacement_mm": 0.5,
+  "mesh_cells": 6,
+  "mesh_tolerance": 0.2,
+  "material_source": "DEMONSTRATION assumptions; not measured or calibrated",
+  "shell_mm": [
+    0.8,
+    0.8,
+    0.8,
+    0.8,
+    0.6,
+    1.0
+  ]
+}

@@ -31,16 +31,21 @@ def main() -> None:
     parser.add_argument('--profiles',default='')
     parser.add_argument('--semiautomated',action='store_true')
     parser.add_argument('--model',type=Path)
+    parser.add_argument('--fea-config',type=Path,help='JSON FEASettings inputs for experimental simulation-guided optimization.')
     args=parser.parse_args()
     logging.basicConfig(level=logging.INFO,format='%(levelname)s: %(message)s')
     examples=Path(__file__).resolve().parent/'examples';make_examples(examples)
-    if args.demo or args.check_compatibility or args.model:
+    if args.demo or args.check_compatibility or args.model or args.fea_config:
         from .file_import import load_model
         from .optimizer import optimize
         from .structural import Settings
         from .slicer import OrcaSlicer,Profiles
+        fea=None
+        if args.fea_config:
+            from .fea import FEASettings
+            fea=FEASettings(**json.loads(args.fea_config.read_text()));fea.validate()
         report=optimize(load_model(args.model or examples/'demo_payload.stl'),Settings(candidate_count=6),args.output,
-                        OrcaSlicer(args.orca,args.profiles),Profiles(),print,args.semiautomated)
+                        OrcaSlicer(args.orca,args.profiles),Profiles(),print,args.semiautomated,fea)
         print(report['status']);print(report['message']);print(report['run_directory'])
         if args.check_compatibility:
             shutil.copy2(Path(report['run_directory'])/'compatibility_report.json',args.output/'compatibility_report.json')

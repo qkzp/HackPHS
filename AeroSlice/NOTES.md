@@ -68,3 +68,17 @@ for comparison. Native 3MF projects remain internal slicing/validation artifacts
 The Save G-code action copies only validated G-code and comparison reports,
 excluding all intermediate project, model, setup and log files. Original inputs
 are preserved; unit interpretation and structural limitations are unchanged.
+
+## Iteration 3 simulation
+
+Optional linear-static voxel FEA and exhaustive regional-density search.
+Material inputs, density power laws and shell/core mixing are unvalidated
+assumptions. Full-face clamping and opposite-face distributed force are explicit.
+Both meshes must pass screening limits and sensitivity checks; no heuristic
+fallback is allowed. G-code selection remains limited to the sliced shortlist.
+See FEA.md in AeroSlice for numerical verification and model limitations.
+
+Weight-first scope: no actual thrust input is required. Optional FEA comparison
+uses baseline/candidate compliance ratios under a normalized reference load.
+Its stiffness-retention target is an adjustable assumption, not a physical
+strength guarantee. Absolute strength limits are exclusive to advanced load mode.

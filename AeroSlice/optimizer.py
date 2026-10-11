@@ -1,6 +1,6 @@
 """Deterministic discrete regional search, authentic slicer ranking and export."""
 from __future__ import annotations
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from pathlib import Path
 from threading import Event
 from typing import Callable
@@ -84,7 +84,7 @@ def manual_steps(settings: Settings) -> list[str]:
         'Review Orca preview and printer settings before any physical print.']
 
 def optimize(model: Model, settings: Settings, output: Path, slicer: OrcaSlicer, profiles: Profiles,
-             progress: Callable[[str],None] = lambda _: None, semiautomated: bool = False) -> dict:
+             progress: Callable[[str],None] = lambda _: None, semiautomated: bool = False, fea=None) -> dict:
     settings.validate();model.verify_original()
     output=Path(output).expanduser().resolve();output.mkdir(parents=True,exist_ok=True)
     work=output/f"AeroSlice-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{time.time_ns()%100000:05d}"
@@ -106,10 +106,38 @@ def optimize(model: Model, settings: Settings, output: Path, slicer: OrcaSlicer,
     try:
         if slicer.cancel.is_set(): raise Cancelled('Optimization cancelled.')
         if semiautomated or any(c['status']=='FAIL' for c in compatibility['checks'].values()):
+            if fea is not None:
+                raise ValueError('FEA-guided G-code generation requires automatic mode and resolved slicer profiles. No heuristic fallback was used.')
             report['status']='SEMIAUTOMATED';report['message']='Mode: Semiautomated. Candidate recommendations were generated; no printer-ready files have been produced.'
             report['manual_steps']=manual_steps(settings)
             (work/'manual_workflow.txt').write_text('\n'.join(report['manual_steps']))
             return report
+        fea_mesh=None
+        if fea is not None:
+            from .fea import direct_search, write_search, shell_from_profiles
+            resolved=slicer.prepare_profiles(profiles,work/'fea_profiles',settings.baseline)
+            fea=replace(fea,shell_mm=shell_from_profiles(resolved))
+            search,fea_mesh=direct_search(triangles,settings,fea,slicer.cancel,progress)
+            report['fea']=search;report['assumptions']=model.warnings+search['limitations']
+            report['assumptions'].append('FEA mode uses regional minima and simulation limits; heuristic demand coverage is not a structural constraint in this mode.')
+            write_search(work,search)
+            feasible_rows=[r for r in search['candidates'] if r['feasible']]
+            if not feasible_rows:raise ValueError('No FEA candidate passed the selected assessment limits and mesh-sensitivity checks. Review fea_search.json; no optimized export was generated.')
+            baseline=(settings.baseline,)*3
+            baseline_row=next((r for r in search['candidates'] if tuple(r['densities'])==baseline),None)
+            candidates=[Candidate('baseline',baseline,'Uniform reference; FEA limits evaluated separately.',bool(baseline_row and baseline_row['feasible']))]
+            for row in feasible_rows:
+                values=tuple(row['densities'])
+                if values==baseline:continue
+                name='uniform_lightweight' if len(set(values))==1 and values[0]<settings.baseline else f'fea_{len(candidates):03d}'
+                candidates.append(Candidate(name,values,'Passed both mesh resolutions under the specified, unvalidated FEA assumptions.',True))
+                if len(candidates)>=settings.candidate_count:break
+            report['candidates']=[asdict(c) for c in candidates]
+            for row in report['candidates']:
+                row['fea']=next((r for r in search['candidates'] if r['densities']==list(row['densities'])),None)
+            search['slicing_shortlist_count']=len(candidates)
+            search['selection_scope']='Lowest Orca-estimated mass among slice-validated candidates in the simulation-ranked shortlist; not a global optimum.'
+            write_search(work,search)
         progress('Loading verified Adventurer 5M, process and filament profiles…')
         write_stl(work/'payload.stl',triangles)
         seed,resolved=slicer.establish_project(work/'payload.stl',work/'setup',profiles,settings.baseline)
@@ -154,10 +182,11 @@ def optimize(model: Model, settings: Settings, output: Path, slicer: OrcaSlicer,
             except Exception as exc:
                 row.update(status='FAIL',error=str(exc))
                 if index==0: raise
-        adaptive=[c for c in good if c['id'].startswith('adaptive_')]
-        if not adaptive: raise ValueError('No regional candidate passed every heuristic and slicing constraint. See individual validation results.')
+        if not good:raise ValueError('No candidate passed both simulation/design limits and slicing validation. See the individual reports.')
+        adaptive=[c for c in good if c['id'].startswith(('adaptive_','fea_')) and len(set(c['densities']))>1]
+        if not adaptive and fea is None: raise ValueError('No regional candidate passed every heuristic and slicing constraint. See individual validation results.')
         rank=lambda c:(c['metrics']['mass_g'],c['metrics']['time_s'],c['densities'])
-        report['best_adaptive_candidate']=min(adaptive,key=rank)['id']
+        report['best_adaptive_candidate']=min(adaptive,key=rank)['id'] if adaptive else None
         report['lightest_feasible_candidate']=min(good,key=rank)['id']
         selected=min(good,key=rank)
         if selected['id']=='baseline':
@@ -169,6 +198,11 @@ def optimize(model: Model, settings: Settings, output: Path, slicer: OrcaSlicer,
             raise ValueError('Selected project failed reproducible reopening / reslicing.')
         if project_contract(reopened)['geometry']!=original_digest: raise ValueError('Reopened project changed geometry.')
         model.verify_original()
+        if fea_mesh is not None:
+            from .fea import save_fields
+            report['fea_selected']=save_fields(work,fea_mesh,selected['densities'])
+            report['fea_selected']['relative_stiffness_ratio']=selected['fea']['refined']['relative_stiffness_ratio']
+            compatibility['checks']['fea']={'status':'PASS','detail':'Numerical checks and user-defined screening limits passed; physical strength remains unvalidated.'}
         # Native projects remain internal validation artifacts, not print exports.
         for source,name in [(report['candidates'][0]['gcode'],'baseline.gcode'),
                             (selected['gcode'],'optimized.gcode')]:
@@ -178,6 +212,10 @@ def optimize(model: Model, settings: Settings, output: Path, slicer: OrcaSlicer,
         savings=(base_metrics.mass_g-selected['metrics']['mass_g'])/base_metrics.mass_g*100
         report.update(status='AUTOMATED SUCCESS',selected=selected['id'],savings_percent_estimated=savings,
                       message='Lightest candidate satisfying the selected heuristic and slicing constraints. Structural stiffness has not been independently verified.')
+        if fea is not None:
+            report['message']='Lightest slice-validated candidate in the FEA-ranked shortlist, satisfying the specified simulation limits on both meshes. Material and failure models are unvalidated; this is not a physical strength guarantee.'
+            if fea.assessment=='relative_stiffness':
+                report['message']='Weight-first result: lightest slice-validated candidate in the shortlist retaining the requested simulated stiffness relative to the baseline. The outer model shape is preserved. No actual thrust, failure load or physical strength was assessed.'
         if selected['id']=='uniform_lightweight': report['message']+=' The uniform lightweight control won; adaptive redistribution did not yield the lowest mass in this search.'
         if savings<=0: report['message']+=' No material reduction was achieved for this search.'
         if settings.fixed_hardware_mass_g is not None:
