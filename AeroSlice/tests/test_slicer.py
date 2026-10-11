@@ -40,13 +40,16 @@ def test_real_end_to_end(tmp_path,shape):
     r=optimize(load_model(path),settings,tmp_path/'out',OrcaSlicer(),Profiles())
     assert r['status']=='AUTOMATED SUCCESS',r['message']
     work=Path(r['run_directory']);assert path.read_bytes()==original
-    assert set(r['exports'])=={'baseline.3mf','optimized.3mf','baseline.gcode','optimized.gcode'}
+    assert set(r['exports'])=={'baseline.gcode','optimized.gcode'}
+    assert not list(work.glob('*.3mf'))
     a=inspect_gcode(work/'baseline.gcode');b=inspect_gcode(work/'optimized.gcode')
     assert a.sparse_digest!=b.sparse_digest;assert a.mass_g>0 and b.mass_g>0
     assert a.filament_mm>0 and b.time_s>0
-    assert project_contract(work/'baseline.3mf')['geometry']==project_contract(work/'optimized.3mf')['geometry']
-    assert project_contract(work/'baseline.3mf')['settings']==project_contract(work/'optimized.3mf')['settings']
-    assert len(project_contract(work/'optimized.3mf')['densities'])==3
+    baseline_project=Path(r['candidates'][0]['project'])
+    selected_project=Path(next(c for c in r['candidates'] if c['id']==r['selected'])['project'])
+    assert project_contract(baseline_project)['geometry']==project_contract(selected_project)['geometry']
+    assert project_contract(baseline_project)['settings']==project_contract(selected_project)['settings']
+    assert len(project_contract(selected_project)['densities'])==3
     assert r['compatibility']['checks']['project_reopening']['status']=='PASS'
     assert r['compatibility']['checks']['physical_printer']['status']=='NOT TESTED'
 
