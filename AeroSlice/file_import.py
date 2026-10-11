@@ -137,6 +137,9 @@ def load_model(filename: str | Path) -> Model:
         if np.any(areas < 1e-10): raise ValueError('Geometry contains degenerate triangles. Repair it in OrcaSlicer first.')
         dimensions = np.ptp(triangles,axis=(0,1))
         if np.any(dimensions < .001): raise ValueError('Model must have nonzero dimensions on all three axes.')
+        if dimensions.max() < 1:
+            size = ' × '.join(f'{d:.6g}' for d in dimensions)
+            warnings.append(f'Very small model: {size} mm. Check the intended size and export units before printing; the app does not automatically resize your model.')
         # A closed manifold is needed for the payload-volume heuristic.
         verts = np.round(triangles.reshape(-1,3),6)
         _, inv = np.unique(verts,axis=0,return_inverse=True)

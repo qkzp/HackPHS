@@ -75,3 +75,51 @@ def test_close_cancels_worker_process(tmp_path):
     app.worker(lambda:slicer.run([],tmp_path/'process.log'))
     time.sleep(.15);app.close();app.worker_thread.join(timeout=3)
     assert not app.worker_thread.is_alive()
+
+@pytest.mark.gui
+def test_beginner_controls_preserve_engineering_settings(tmp_path):
+    import tkinter as tk
+    try:
+        probe=tk.Tk();probe.destroy()
+    except tk.TclError:pytest.skip('NOT TESTED: graphical Tk session required')
+    from AeroSlice.gui import Application
+    from AeroSlice.main import make_examples
+    make_examples(tmp_path/'examples');app=Application(tmp_path/'examples')
+    try:
+        app.update()
+        for key in ('optimization','printer','live','stiffness'):
+            assert not app.sections[key]['body'].winfo_ismapped()
+        before=app.settings()
+        app.search_choice.set('Quick · 3 designs');app.search_box.event_generate('<<ComboboxSelected>>');app.update()
+        after=app.settings()
+        assert after.candidate_count==3
+        assert after.baseline==before.baseline and after.protected_minima==before.protected_minima and after.coverage==before.coverage
+        app.toggle_section('optimization');app.update()
+        assert app.sections['optimization']['body'].winfo_ismapped()
+        app.v['candidate_count'].set('10');assert app.search_choice.get()=='Custom · 10 designs'
+        app.toggle_section('optimization');app.update()
+        assert not app.sections['optimization']['body'].winfo_ismapped()
+        app.demo_model();app.update();assert app.upload_button['text']=='Replace model…'
+        app.metric_vars['before'].set('old estimate');app.demo_model();app.update()
+        assert app.metric_vars['before'].get()=='—'
+        assert 'model' in app.next_step.get().lower() or 'ready' in app.next_step.get().lower()
+    finally:app.close()
+
+@pytest.mark.gui
+def test_material_dropdown_maps_to_installed_profile(tmp_path):
+    import tkinter as tk
+    try:
+        probe=tk.Tk();probe.destroy()
+    except tk.TclError:pytest.skip('NOT TESTED: graphical Tk session required')
+    from AeroSlice.gui import Application
+    app=Application(tmp_path)
+    try:
+        app.update()
+        if 'PETG · standard profile' not in app.material_profiles:
+            pytest.skip('NOT TESTED: installed Flashforge PETG profile required for selector test')
+        app.material_choice.set('PETG · standard profile');app.material_box.event_generate('<<ComboboxSelected>>');app.update()
+        assert app.profiles().filament=='Flashforge Generic PETG'
+        assert 'PETG' in app.setup_summary.get()
+        app.v['filament_profile'].set('Custom material profile');app.update()
+        assert app.material_choice.get()=='Custom · Custom material profile'
+    finally:app.close()
