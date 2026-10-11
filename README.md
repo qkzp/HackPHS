@@ -4,6 +4,35 @@ A working Python/Tkinter desktop application for searching **real regional infil
 configurations** with OrcaSlicer and the Flashforge Adventurer 5M. Only the separate
 removable payload is optimized. The app never operates the printer, motor or propeller.
 
+## A simpler everyday interface (iteration1)
+
+The main screen follows **Add model → Choose setup → Compare results → Save files**.
+Use **Try an example** if you do not have a model yet. The main action and Save
+button remain visible on smaller screens; long settings panels scroll.
+
+Choose the material actually on your spool from available installed PLA/PETG
+profiles, then choose Quick (up to 3 designs), Standard (8), or Detailed (12).
+These choices change search effort only; they do not certify strength or relax
+protected regions. Custom material profiles remain available in printer setup.
+The output folder, printer setup and search count are remembered after a run.
+
+Advanced infill percentages, support directions and density constraints are
+collapsed by default. Initial assumptions still treat the object as resting on
+its lower face; change these in **Advanced: infill & engineering settings** for
+other support conditions. **Printer setup & troubleshooting** contains profile
+files, the example-model setup check, candidate previews and manual mode.
+
+After real slicing, the main screen shows original/selected estimated grams,
+material savings and print time in minutes. **Details: compare all designs**
+shows the comparison table. **Your results** explains the next printing steps;
+**View technical details…** retains complete settings, errors and validation data.
+Replacing a model clears the previous on-screen print estimates.
+
+**Test & measure (optional)** starts with CSV import and explicitly simulated
+readings. Live ESP32 configuration and processing settings are expandable.
+The results page keeps real weighing and separate stiffness tests optional.
+Synthetic labels, unknown strength and genuine-file requirements are unchanged.
+
 ## Launch on this Mac
 
 Double-click **`launch_aeroslice.command`** in Finder, or run from this repository:
@@ -36,7 +65,7 @@ about the filament loaded in your printer. Preferences are saved under
 
 ## Use the desktop application
 
-1. **Upload 3D Model**: choose an STL or compatible 3MF anywhere on your Mac.
+1. **Add 3D model…**: choose an STL or compatible 3MF anywhere on your Mac.
    No copying into the repository or uploading to an AI assistant is needed.
    Originals are read-only and hashed. Replace the payload without restarting.
 2. Configure baseline/range, candidate count, print rotation, platform contact
@@ -44,14 +73,12 @@ about the filament loaded in your printer. Preferences are saved under
    optional custom demand scores, and heuristic coverage. The contact assumption
    is the whole selected bounding-box face. If this does not represent your rig,
    supply conservative custom demand/protected zones or use the manual workflow.
-3. Choose printer/filament/process profiles and an output folder. **Check
-   Compatibility** executes an independent example-payload slicing test; it does
+3. Choose printer/filament/process profiles and an output folder. **Check my printer setup** executes an independent example-payload slicing test; it does
    not replace the uploaded model or its optimization results.
-4. **Generate Candidates** previews density assignments without claiming slicing.
-   **Optimize Model** runs real OrcaSlicer processes in a background worker.
+4. **Preview design options** previews density assignments without claiming slicing.
+   **Find a lighter print** runs real OrcaSlicer processes in a background worker.
    **Cancel** terminates the current subprocess. Each run has its own folder.
-5. Compare authentic slicer mass, filament and time estimates. **Export Optimized
-   Files** copies the validated run to a chosen folder. Open the project in
+5. Compare authentic slicer mass, filament and time estimates. **Save print files…** copies the validated run to a chosen folder. Open the project in
    OrcaSlicer and review the preview and actual printer/material configuration.
 
 Successful runs contain `baseline.3mf`, `optimized.3mf`, `baseline.gcode`,
@@ -70,9 +97,9 @@ Statuses are distinct:
 | FAILED | Automatic processing failed. Exact errors are reported, and validated export is disabled. |
 | NOT TESTED | A particular compatibility or hardware check has not been executed. |
 
-When Orca is unavailable, choose **Mode: Semiautomated** to prepare recommendations,
+When Orca is unavailable, choose **Prepare suggestions for manual slicing instead** to prepare recommendations,
 a heatmap and step-by-step instructions. Import authentic baseline/candidate G-code
-with **Import authentic G-code comparison**. Imported metrics do not establish
+with **Import a manually sliced comparison…**. Imported metrics do not establish
 that the files correspond to the selected model or have verified regional settings.
 A failed automated run offers the same manual instructions without relabeling its
 failure as automatic success.
@@ -175,8 +202,7 @@ lower drag or higher stiffness.
 
 ## Reproducible demonstration and tests
 
-In the GUI, use **Example payload**, run **Optimize Model**, then use **Synthetic
-demo** in the sensor tab. The example is a deliberately generated 30 mm cube;
+In the GUI, use **Try an example**, run **Find a lighter print**, then use **Try simulated readings** in the sensor tab. The example is a deliberately generated 30 mm cube;
 it is not a claimed final payload or rig dimension. Synthetic sensor rows and graphs
 are always labeled **SYNTHETIC DEMONSTRATION DATA**. Slicer results are real.
 

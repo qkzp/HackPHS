@@ -1,6 +1,6 @@
 # Iteration 0 engineering notes
 
-All implementation work is in the `iteration0` working branch.
+The initial application was developed on `iteration0`. The beginner interface update is on `iteration1`.
 
 Automated slicing is implemented and executed on this macOS machine using OrcaSlicer
 2.4.2, the bundled Adventurer 5M 0.4 nozzle profile, 0.20 mm Standard process, and
@@ -45,3 +45,18 @@ the selected 20/10/10% candidate was estimated at 10.72 g (13.128% reduction).
 This is a slicer estimate for the example, not a physical payload measurement.
 Real tapered-mesh, native-project reimport, X-axis modifier and GUI upload/optimize/
 export tests also ran. Sensor demonstration results are explicitly synthetic.
+
+## Iteration 1 interface
+
+- Guided upload/setup/comparison/export layout with persistent main action buttons.
+- Infill, loading assumptions, file profiles, live sensor setup and stiffness fields
+  are available through collapsed sections rather than required first-use controls.
+- Quick/Standard/Detailed change only candidate count, preserving density,
+  protection and heuristic constraints.
+- Basic PLA/PETG selections map to actually installed Flashforge profiles; runtime
+  compatibility checks still execute before slicing. Existing custom profiles stay
+  selected until the user explicitly changes them.
+- Estimates are presented as readable metric cards and minute-based print times.
+- Complete diagnostic data remains accessible in technical details and run reports.
+- Sensor results remain explicitly measured/user-supplied or synthetic. No hardware
+  validation or stiffness claims were added by this interface change.

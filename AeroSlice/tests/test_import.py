@@ -23,6 +23,14 @@ def test_ascii(tmp_path):
     assert np.allclose(load_model(p).dimensions,[2,3,4])
 
 
+def test_tiny_stl_warns_without_resizing(tmp_path):
+    p=tmp_path/'tiny.stl';write_stl(p,box_mesh(np.zeros(3),np.full(3,.0254)))
+    original=p.read_bytes();model=load_model(p)
+    assert np.allclose(model.dimensions,[.0254]*3)
+    assert any('Very small model' in warning and 'export units' in warning for warning in model.warnings)
+    assert p.read_bytes()==original
+
+
 def geometry_3mf(path,triangles,items=1,transform='1 0 0 0 1 0 0 0 1 10 20 30'):
     vs=''.join(f'<vertex x="{x}" y="{y}" z="{z}"/>' for x,y,z in triangles.reshape(-1,3))
     fs=''.join(f'<triangle v1="{3*i}" v2="{3*i+1}" v3="{3*i+2}"/>' for i in range(len(triangles)))

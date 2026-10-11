@@ -15,6 +15,17 @@ def test_missing_executable_report(tmp_path):
     r=OrcaSlicer('/not/a/program').discover(tmp_path)
     assert r['checks']['executable']['status']=='FAIL'
 
+
+def test_too_small_for_first_layer_stops_before_cli(tmp_path,monkeypatch):
+    p=tmp_path/'tiny.stl';write_stl(p,box_mesh(np.zeros(3),np.full(3,.0254)))
+    slicer=OrcaSlicer()
+    monkeypatch.setattr(slicer,'prepare_profiles',lambda *args: {'process':{'initial_layer_print_height':'.2'}})
+    def unexpected_cli(*args):
+        pytest.fail('Unprintable size should be diagnosed before launching OrcaSlicer')
+    monkeypatch.setattr(slicer,'run',unexpected_cli)
+    with pytest.raises(ValueError,match='Size: 0.0254 × 0.0254 × 0.0254 mm'):
+        slicer.establish_project(p,tmp_path/'setup',Profiles(),20)
+
 @pytest.mark.integration
 @pytest.mark.parametrize('shape',['cube','wedge_rotated'])
 def test_real_end_to_end(tmp_path,shape):

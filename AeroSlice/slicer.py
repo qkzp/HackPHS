@@ -125,6 +125,19 @@ class OrcaSlicer:
 
     def establish_project(self, stl: Path, work: Path, selected: Profiles, density: float) -> tuple[Path,dict]:
         profiles=self.prepare_profiles(selected,work/'profiles',density)
+        model=load_model(stl)
+        process=profiles['process']
+        first_layer=str(process.get('initial_layer_print_height', process.get('layer_height', '')))
+        try:
+            height=float(first_layer)
+        except (TypeError, ValueError):
+            height=0.  # Leave unsupported profile formats to OrcaSlicer.
+        if height>0 and model.dimensions[2]<height/2:
+            size=' × '.join(f'{d:.6g}' for d in model.dimensions)
+            raise ValueError(f'Model is too short to create a print layer. Size: {size} mm; '
+                             f'first layer: {height:g} mm. Check the intended dimensions and re-export '
+                             'your model in millimeters, or resize it in your slicer before uploading. '
+                             'STL files do not declare units; AeroSlice assumes millimeters and does not automatically resize them.')
         self.run(['--load-settings',str(work/'profiles/machine.json')+';'+str(work/'profiles/process.json'),
                   '--load-filaments',str(work/'profiles/filament.json'),'--orient','0','--arrange','1',
                   '--export-3mf','seed.3mf','--outputdir',str(work),str(stl)],work/'establish.log')
