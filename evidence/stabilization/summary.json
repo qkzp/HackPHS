@@ -1,0 +1,15 @@
+{
+  "tests": 141,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "duration_s": 134.9,
+  "branch": "iteration5",
+  "real_workflows": 10,
+  "successful_workflows": 9,
+  "controlled_fea_rejections": 1,
+  "physical_printer": "NOT TESTED",
+  "physical_sensor": "NOT TESTED",
+  "serial_test": "Real pyserial I/O via POSIX pseudo-terminal",
+  "batch_mode": "Not implemented"
+}

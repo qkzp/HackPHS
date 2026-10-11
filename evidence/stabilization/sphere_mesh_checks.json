@@ -1,0 +1,32 @@
+[
+  {
+    "cells": 12,
+    "seconds": 9.72,
+    "feasible_count": 1,
+    "mesh_pass_count": 18,
+    "assessment_pass_count": 1,
+    "baseline_compliance_mesh_change": 0.14523982096506258,
+    "passing_densities": [
+      [
+        15.0,
+        15.0,
+        15.0
+      ]
+    ]
+  },
+  {
+    "cells": 14,
+    "seconds": 28.69,
+    "feasible_count": 1,
+    "mesh_pass_count": 13,
+    "assessment_pass_count": 1,
+    "baseline_compliance_mesh_change": 0.12853254860595667,
+    "passing_densities": [
+      [
+        15.0,
+        15.0,
+        15.0
+      ]
+    ]
+  }
+]

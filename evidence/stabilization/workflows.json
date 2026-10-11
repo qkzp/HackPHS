@@ -1,0 +1,216 @@
+{
+  "python": "3.12.4",
+  "cases": [
+    {
+      "shape": "cube",
+      "mode": "weight",
+      "seconds": 5.12,
+      "status": "AUTOMATED SUCCESS",
+      "message": "Lightest candidate satisfying the selected heuristic and slicing constraints. Structural stiffness has not been independently verified.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111340-34000",
+      "baseline_mass_g": 9.8,
+      "optimized_mass_g": 8.55,
+      "savings_percent": 12.755102040816327,
+      "selected_densities": [
+        15,
+        10.0,
+        5.0
+      ],
+      "original_climb_s": 0.7742086172136756,
+      "optimized_climb_s": 0.7575315428908345,
+      "climb_time_reduction_percent": 2.1540801732304167,
+      "geometry_preserved": true,
+      "sparse_toolpaths_changed": true,
+      "reopening_verified": true
+    },
+    {
+      "shape": "cube",
+      "mode": "weight_and_fea_95",
+      "seconds": 11.62,
+      "status": "AUTOMATED SUCCESS",
+      "message": "Weight-first result: lightest slice-validated candidate in the shortlist retaining the requested simulated stiffness relative to the baseline. The outer model shape is preserved. No actual thrust, failure load or physical strength was assessed.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111346-49000",
+      "baseline_mass_g": 9.8,
+      "optimized_mass_g": 9.37,
+      "savings_percent": 4.387755102040831,
+      "selected_densities": [
+        10.0,
+        15,
+        15
+      ],
+      "original_climb_s": 0.7742086172136756,
+      "optimized_climb_s": 0.7683907235120565,
+      "climb_time_reduction_percent": 0.7514633100516653,
+      "geometry_preserved": true,
+      "sparse_toolpaths_changed": true,
+      "reopening_verified": true,
+      "minimum_predicted_stiffness_percent": 96.80058848970539
+    },
+    {
+      "shape": "prism",
+      "mode": "weight",
+      "seconds": 3.68,
+      "status": "AUTOMATED SUCCESS",
+      "message": "Lightest candidate satisfying the selected heuristic and slicing constraints. Structural stiffness has not been independently verified.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111358-66000",
+      "baseline_mass_g": 5.88,
+      "optimized_mass_g": 5.32,
+      "savings_percent": 9.523809523809518,
+      "selected_densities": [
+        15,
+        10.0,
+        5.0
+      ],
+      "original_climb_s": 0.7241445360920525,
+      "optimized_climb_s": 0.717494022415004,
+      "climb_time_reduction_percent": 0.9183958927507658,
+      "geometry_preserved": true,
+      "sparse_toolpaths_changed": true,
+      "reopening_verified": true
+    },
+    {
+      "shape": "prism",
+      "mode": "weight_and_fea_95",
+      "seconds": 4.5,
+      "status": "AUTOMATED SUCCESS",
+      "message": "Weight-first result: lightest slice-validated candidate in the shortlist retaining the requested simulated stiffness relative to the baseline. The outer model shape is preserved. No actual thrust, failure load or physical strength was assessed.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111402-27000",
+      "baseline_mass_g": 5.88,
+      "optimized_mass_g": 5.45,
+      "savings_percent": 7.312925170068023,
+      "selected_densities": [
+        15,
+        5.0,
+        15
+      ],
+      "original_climb_s": 0.7241445360920525,
+      "optimized_climb_s": 0.7190276809675616,
+      "climb_time_reduction_percent": 0.7066068815632746,
+      "geometry_preserved": true,
+      "sparse_toolpaths_changed": true,
+      "reopening_verified": true,
+      "minimum_predicted_stiffness_percent": 95.69624677096235
+    },
+    {
+      "shape": "cylinder",
+      "mode": "weight",
+      "seconds": 3.67,
+      "status": "AUTOMATED SUCCESS",
+      "message": "Lightest candidate satisfying the selected heuristic and slicing constraints. Structural stiffness has not been independently verified.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111407-98000",
+      "baseline_mass_g": 7.51,
+      "optimized_mass_g": 6.53,
+      "savings_percent": 13.049267643142471,
+      "selected_densities": [
+        15,
+        10.0,
+        5.0
+      ],
+      "original_climb_s": 0.7441820321732124,
+      "optimized_climb_s": 0.7320106796546689,
+      "climb_time_reduction_percent": 1.6355343171884806,
+      "geometry_preserved": true,
+      "sparse_toolpaths_changed": true,
+      "reopening_verified": true
+    },
+    {
+      "shape": "cylinder",
+      "mode": "weight_and_fea_95",
+      "seconds": 8.41,
+      "status": "AUTOMATED SUCCESS",
+      "message": "Weight-first result: lightest slice-validated candidate in the shortlist retaining the requested simulated stiffness relative to the baseline. The outer model shape is preserved. No actual thrust, failure load or physical strength was assessed.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111411-61000",
+      "baseline_mass_g": 7.51,
+      "optimized_mass_g": 7.23,
+      "savings_percent": 3.728362183754985,
+      "selected_densities": [
+        10.0,
+        15,
+        15
+      ],
+      "original_climb_s": 0.7441820321732124,
+      "optimized_climb_s": 0.7406652053872242,
+      "climb_time_reduction_percent": 0.47257614856920266,
+      "geometry_preserved": true,
+      "sparse_toolpaths_changed": true,
+      "reopening_verified": true,
+      "minimum_predicted_stiffness_percent": 97.23346255406884
+    },
+    {
+      "shape": "sphere",
+      "mode": "weight",
+      "seconds": 4.12,
+      "status": "AUTOMATED SUCCESS",
+      "message": "Lightest candidate satisfying the selected heuristic and slicing constraints. Structural stiffness has not been independently verified.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111420-23000",
+      "baseline_mass_g": 5.04,
+      "optimized_mass_g": 4.44,
+      "savings_percent": 11.904761904761898,
+      "selected_densities": [
+        15,
+        10.0,
+        5.0
+      ],
+      "original_climb_s": 0.7142113819945815,
+      "optimized_climb_s": 0.7072701550127395,
+      "climb_time_reduction_percent": 0.9718729156145856,
+      "geometry_preserved": true,
+      "sparse_toolpaths_changed": true,
+      "reopening_verified": true
+    },
+    {
+      "shape": "sphere",
+      "mode": "weight_and_fea_95",
+      "seconds": 3.55,
+      "status": "FAILED",
+      "message": "FEA mesh accuracy check failed for all 18 candidates. Increase Coarse mesh cells in Simulation settings (currently 9); keep the mesh tolerance unchanged. This result does not establish whether stiffness is preserved. Review fea_search.json; no optimized export was generated.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111424-21000",
+      "no_invalid_export": true
+    },
+    {
+      "shape": "irregular",
+      "mode": "weight",
+      "seconds": 2.97,
+      "status": "AUTOMATED SUCCESS",
+      "message": "Lightest candidate satisfying the selected heuristic and slicing constraints. Structural stiffness has not been independently verified.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111428-30000",
+      "baseline_mass_g": 6.97,
+      "optimized_mass_g": 6.3,
+      "savings_percent": 9.612625538020085,
+      "selected_densities": [
+        15,
+        10.0,
+        5.0
+      ],
+      "original_climb_s": 0.7374279837438009,
+      "optimized_climb_s": 0.729208889384412,
+      "climb_time_reduction_percent": 1.1145623085337704,
+      "geometry_preserved": true,
+      "sparse_toolpaths_changed": true,
+      "reopening_verified": true
+    },
+    {
+      "shape": "irregular",
+      "mode": "weight_and_fea_95",
+      "seconds": 5.77,
+      "status": "AUTOMATED SUCCESS",
+      "message": "Weight-first result: lightest slice-validated candidate in the shortlist retaining the requested simulated stiffness relative to the baseline. The outer model shape is preserved. No actual thrust, failure load or physical strength was assessed.",
+      "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/stabilization/AeroSlice-20261011T111431-73000",
+      "baseline_mass_g": 6.97,
+      "optimized_mass_g": 6.47,
+      "savings_percent": 7.173601147776183,
+      "selected_densities": [
+        15,
+        5.0,
+        15
+      ],
+      "original_climb_s": 0.7374279837438009,
+      "optimized_climb_s": 0.7312778133588652,
+      "climb_time_reduction_percent": 0.8340028478051915,
+      "geometry_preserved": true,
+      "sparse_toolpaths_changed": true,
+      "reopening_verified": true,
+      "minimum_predicted_stiffness_percent": 96.00188712701294
+    }
+  ]
+}

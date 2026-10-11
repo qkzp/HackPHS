@@ -7,14 +7,19 @@ specified conditions. It does not establish physical strength or safe service.
 ## Use in the app
 
 The primary objective is **lower estimated print weight with the same outer shape**.
+The default coarse mesh uses nine cells along the longest axis, followed by a
+finer mesh with every axis increased by at least two cells. The 20% sensitivity
+tolerance remains unchanged. If mesh checks fail, refine the mesh before
+interpreting stiffness results; a failed mesh check is not a stiffness failure.
 No actual thrust measurement is required for the weight-first workflow.
 
 1. Import a closed, connected STL or supported 3MF and confirm its millimeter size.
-2. Leave the default **Weight saving** mode for the original infill-rule search,
-   or choose **Weight saving + FEA comparison** for simulation-assisted screening.
+2. The desktop defaults to **Weight saving + FEA comparison** to screen
+   predicted stiffness. **Weight saving** alone uses infill rules without FEA.
 3. For the FEA comparison, choose a relative-stiffness retention target in
-   **Simulation: material, loads & limits**. The default 75% is an editable
-   demonstration comparison rule, not a validated safety threshold. The same
+   **Print setup & goals → Minimum stiffness retained (%)**. The default 95% permits at most 5% predicted stiffness loss on both meshes.
+   This editable target is not a 5% simulation-error bound or a validated safety
+   threshold. The same
    normalized 1 N load is used for every candidate and the baseline; no real
    thrust value is needed or inferred. The comparison represents only the chosen
    load direction and full-face clamping arrangement.

@@ -37,8 +37,9 @@ class Settings:
         if not np.isfinite(values).all(): raise ValueError('Settings must contain finite numbers.')
         if not 0 <= self.minimum <= self.baseline <= self.maximum <= 100:
             raise ValueError('Use 0 ≤ minimum ≤ baseline ≤ maximum ≤ 100%.')
-        if not 3 <= self.candidate_count <= 20: raise ValueError('Choose 3–20 candidates.')
-        if self.contact_axis not in 'xyz' or self.load_axis not in 'xyz' or self.contact_face not in ('min','max'):
+        if not isinstance(self.candidate_count,int) or not 3 <= self.candidate_count <= 20: raise ValueError('Choose 3–20 candidates as a whole number.')
+        if len(self.rotation)!=3:raise ValueError('Rotation must contain three X, Y, Z angles.')
+        if self.contact_axis not in ('x','y','z') or self.load_axis not in ('x','y','z') or self.contact_face not in ('min','max'):
             raise ValueError('Invalid contact face or loading axis.')
         if len(self.protected_minima) != 3 or any(not self.minimum <= x <= self.maximum for x in self.protected_minima):
             raise ValueError('Each protected minimum must lie within the density range.')
@@ -58,6 +59,17 @@ class Region:
     minimum: float
     maximum: float
     volume_fraction: float
+
+
+def weight_saving_settings(baseline: float = 15., candidate_count: int = 12) -> Settings:
+    """Weight-first starting preset; limits are heuristics, not strength claims."""
+    minimum=min(5.,baseline)
+    settings=Settings(baseline=baseline,minimum=minimum,maximum=baseline,
+                      candidate_count=candidate_count,
+                      densities=tuple(sorted({minimum,baseline,*[d for d in (5.,10.,15.,20.,25.,30.) if minimum<=d<=baseline]})),
+                      protected_minima=(min(10.,baseline),minimum,minimum))
+    settings.validate()
+    return settings
 
 
 def occupancy_fractions(triangles: np.ndarray, axis: int) -> np.ndarray:

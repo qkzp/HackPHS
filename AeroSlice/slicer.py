@@ -11,6 +11,7 @@ from pathlib import Path
 from threading import Event
 from zipfile import ZipFile, ZIP_DEFLATED
 import json
+import math
 import os
 import platform
 import shutil
@@ -23,7 +24,7 @@ from .file_import import CORE, PROD, Q, matrix, safe_xml, load_model
 from .model import box_mesh, geometry_digest
 
 DEFAULT_EXECUTABLE = '/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer'
-REQUIRED_FLAGS = ('--load-settings','--load-filaments','--export-3mf','--outputdir','--slice','--orient','--arrange')
+REQUIRED_FLAGS = ('--load-settings','--load-filaments','--export-3mf','--outputdir','--slice','--orient','--arrange','--allow-rotations')
 
 class Cancelled(RuntimeError): pass
 
@@ -35,6 +36,7 @@ class Profiles:
 
 class OrcaSlicer:
     def __init__(self, executable: str = '', profile_root: str = '', timeout: float = 180., cancel: Event | None = None):
+        if not math.isfinite(timeout) or timeout<=0:raise ValueError('Slicer timeout must be a positive finite number of seconds.')
         discovered = shutil.which('orca-slicer') or shutil.which('OrcaSlicer')
         self.executable = Path(executable or (DEFAULT_EXECUTABLE if Path(DEFAULT_EXECUTABLE).is_file() else discovered or DEFAULT_EXECUTABLE)).expanduser()
         self.root=Path(profile_root).expanduser() if profile_root else self.executable.parent.parent/'Resources/profiles'
@@ -46,6 +48,7 @@ class OrcaSlicer:
         self.help=''
 
     def run(self, args: list[str], log: Path, timeout: float | None = None) -> str:
+        if self.cancel.is_set():raise Cancelled('Operation cancelled. No automatic success was recorded.')
         log.parent.mkdir(parents=True,exist_ok=True)
         command=[str(self.executable),*args]
         log.with_suffix('.command.json').write_text(json.dumps(command,indent=2))
@@ -81,19 +84,31 @@ class OrcaSlicer:
             for flag in REQUIRED_FLAGS:
                 if flag not in self.help: raise ValueError(f'Installed OrcaSlicer does not advertise {flag}.')
             checks['required_flags']={'status':'PASS','detail':list(REQUIRED_FLAGS)}
-            self.index.clear();self.profile_paths.clear()
-            for path in self.root.rglob('*.json'):
-                try:
-                    value=json.loads(path.read_text())
-                    if 'name' in value:
-                        self.index.setdefault(value['name'],path)
-                        self.profile_paths.setdefault(value['name'],[]).append(path)
-                except (OSError,ValueError): continue
+            self.index_profiles()
             if not self.index: raise ValueError('No printer/process/filament profiles found. Select the profiles directory.')
             checks['profile_discovery']={'status':'PASS','detail':len(self.index)}
         except Exception as exc: checks['discovery']={'status':'FAIL','detail':str(exc)}
         report['orca_version']=self.version
         return report
+
+    def index_profiles(self) -> None:
+        """Read installed profiles without starting a slicer process."""
+        self.index.clear();self.profile_paths.clear()
+        for path in self.root.rglob('*.json'):
+            try:
+                value=json.loads(path.read_text())
+                if 'name' in value:
+                    self.index.setdefault(value['name'],path)
+                    self.profile_paths.setdefault(value['name'],[]).append(path)
+            except (OSError,ValueError): continue
+
+    def starting_infill(self, process: str) -> float:
+        self.index_profiles()
+        value=self.resolve(process)['sparse_infill_density']
+        density=float(str(value).rstrip('%'))
+        if not np.isfinite(density) or not 0 <= density <= 100:
+            raise ValueError('The selected process has an invalid starting infill.')
+        return density
 
     def resolve(self, name: str, seen: tuple[str,...] = ()) -> dict:
         path=Path(name).expanduser()
@@ -158,9 +173,11 @@ class OrcaSlicer:
                              f'first layer: {height:g} mm. Check the intended dimensions and re-export '
                              'your model in millimeters, or resize it in your slicer before uploading. '
                              'STL files do not declare units; AeroSlice assumes millimeters and does not automatically resize them.')
+        # Keep the requested print orientation: arrangement may translate but
+        # must not rotate asymmetrical STL shapes.
         self.run(['--load-settings',str(work/'profiles/machine.json')+';'+str(work/'profiles/process.json'),
                   '--load-filaments',str(work/'profiles/filament.json'),'--orient','0','--arrange','1',
-                  '--export-3mf','seed.3mf','--outputdir',str(work),str(stl)],work/'establish.log')
+                  '--allow-rotations=0','--export-3mf','seed.3mf','--outputdir',str(work),str(stl)],work/'establish.log')
         project=work/'seed.3mf'
         if not project.is_file(): raise ValueError('OrcaSlicer did not export a native project.')
         load_model(project)

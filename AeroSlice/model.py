@@ -38,7 +38,9 @@ class Model:
         return points
 
     def verify_original(self) -> None:
-        if hashlib.sha256(self.path.read_bytes()).hexdigest() != self.sha256:
+        try:digest=hashlib.sha256(self.path.read_bytes()).hexdigest()
+        except OSError as exc:raise ValueError('The uploaded model is no longer readable. Upload it again.') from exc
+        if digest != self.sha256:
             raise ValueError('The uploaded model changed on disk. Upload it again.')
 
 

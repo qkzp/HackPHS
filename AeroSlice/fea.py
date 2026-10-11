@@ -33,7 +33,7 @@ LIMITATIONS = [
 @dataclass
 class FEASettings:
     assessment: str = 'absolute_limits'
-    minimum_stiffness_ratio: float = .75
+    minimum_stiffness_ratio: float = .95
     force_n: float = 10.
     force_axis: str = 'z'
     e_xy_mpa: float = 2000.
@@ -48,7 +48,7 @@ class FEASettings:
     strength_power: float = 1.5
     safety_factor: float = 2.
     max_displacement_mm: float = .5
-    mesh_cells: int = 6
+    mesh_cells: int = 9
     mesh_tolerance: float = .2
     material_source: str = 'DEMONSTRATION assumptions; not measured or calibrated'
     # x-/x+/y-/y+/z-/z+ shell thickness. Runtime derives these from slicer.
@@ -268,13 +268,17 @@ def direct_search(triangles,settings,fea,cancel,progress):
         else:passed=a['limits_pass'] and b['limits_pass']
         rows.append({'densities':list(densities),'coarse':a,'refined':b,'relative_mesh_changes':changes,
                      'relative_volume_change':volume_change,'mesh_check_pass':stable,
+                     'assessment_check_pass':bool(passed),
                      'feasible':bool(stable and passed)})
     rows.sort(key=lambda row:(row['refined']['material_volume_proxy_mm3'],row['densities']))
     result={'status':'SIMULATED — UNVALIDATED','method':'Exhaustive discrete search; 8-node trilinear voxel elements with 2×2×2 Gauss integration',
             'inputs':asdict(fea),'support_axis':settings.contact_axis,'support_face':settings.contact_face,
             'coarse_mesh':coarse.metadata,'refined_mesh':fine.metadata,'combinations_tested':len(rows),
             'baseline_response':{'coarse':base_coarse,'refined':base_fine,'relative_compliance_mesh_change':base_mesh_change},
-            'feasible_count':sum(r['feasible'] for r in rows),'limitations':LIMITATIONS,'candidates':rows}
+            'feasible_count':sum(r['feasible'] for r in rows),
+            'mesh_pass_count':sum(r['mesh_check_pass'] for r in rows),
+            'assessment_pass_count':sum(r['assessment_check_pass'] for r in rows),
+            'limitations':LIMITATIONS,'candidates':rows}
     if fea.assessment=='relative_stiffness':
         result['limitations']=LIMITATIONS+['Relative comparison uses a normalized 1 N reference load, not actual thrust. Only stiffness retention relative to the baseline is screened; absolute stress/displacement limits and strength inputs do not control selection.']
     return result,fine

@@ -1,6 +1,6 @@
 {
   "assessment": "relative_stiffness",
-  "minimum_stiffness_ratio": 0.75,
+  "minimum_stiffness_ratio": 0.95,
   "force_n": 1.0,
   "force_axis": "z",
   "e_xy_mpa": 2000.0,
@@ -15,7 +15,7 @@
   "strength_power": 1.5,
   "safety_factor": 2.0,
   "max_displacement_mm": 0.5,
-  "mesh_cells": 6,
+  "mesh_cells": 9,
   "mesh_tolerance": 0.2,
   "material_source": "DEMONSTRATION assumptions; not measured or calibrated",
   "shell_mm": [

@@ -31,9 +31,10 @@ class Recorder:
 
     def start(self, trial_id: str, variant: str) -> None:
         if not self.serial: raise ValueError('Connect a serial port first.')
+        if self.recording:raise ValueError('Stop the current recording before starting another trial.')
         if not trial_id.strip() or not variant.strip(): raise ValueError('Enter trial ID and variant.')
-        self.trial_id=trial_id;self.variant=variant;self.recording=True
         self.serial.write(b'START\n')
+        self.trial_id=trial_id;self.variant=variant;self.recording=True
 
     def stop(self) -> None:
         self.recording=False
@@ -54,7 +55,8 @@ class Recorder:
                 line=self.serial.readline().decode('utf-8',errors='replace').strip()
                 if not line: continue
                 values=next(csv.reader(io.StringIO(line)))
-                if values[0]=='timestamp_ms' or line.startswith('#'): self.messages.put(('info',line));continue
+                if values[0]=='timestamp_ms' or line.startswith('#'):
+                    self.messages.put(('error' if line.startswith('# ERROR') else 'info',line));continue
                 ts=float(values[0]);distance=float(values[1]) if len(values)>1 and values[1] else None
                 if not math.isfinite(ts) or ts<0: raise ValueError('invalid timestamp')
                 error=values[2] if len(values)>2 else ''

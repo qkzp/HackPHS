@@ -1,0 +1,36 @@
+{
+  "os": "macOS-26.6.2-arm64-arm-64bit",
+  "python": "3.12.4 | packaged by Anaconda, Inc. | (main, Jun 18 2024, 10:07:17) [Clang 14.0.6 ]",
+  "executable": "/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer",
+  "profile_root": "/Applications/OrcaSlicer.app/Contents/Resources/profiles",
+  "checks": {
+    "cli": {
+      "status": "PASS",
+      "detail": "OrcaSlicer-2.4.2"
+    },
+    "required_flags": {
+      "status": "PASS",
+      "detail": [
+        "--load-settings",
+        "--load-filaments",
+        "--export-3mf",
+        "--outputdir",
+        "--slice",
+        "--orient",
+        "--arrange",
+        "--allow-rotations"
+      ]
+    },
+    "profile_discovery": {
+      "status": "PASS",
+      "detail": 11455
+    }
+  },
+  "orca_version": "OrcaSlicer-2.4.2",
+  "numpy": "2.5.4",
+  "scipy": "1.18.1",
+  "matplotlib": "3.11.2",
+  "pyserial": "3.5",
+  "tk": 8.6,
+  "platform": "macOS-26.6.2-arm64-arm-64bit"
+}

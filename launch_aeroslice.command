@@ -17,7 +17,11 @@ if [ ! -x .venv/bin/python ]; then
   "$task_python" -m venv .venv
   .venv/bin/python -m pip install -r AeroSlice/requirements.txt
 fi
-if ! .venv/bin/python -c 'import scipy' >/dev/null 2>&1; then
+if ! .venv/bin/python -c 'import numpy, scipy, matplotlib, serial' >/dev/null 2>&1; then
   .venv/bin/python -m pip install -r AeroSlice/requirements.txt
+fi
+if ! .venv/bin/python -c 'import tkinter' >/dev/null 2>&1; then
+  print 'This Python environment needs Tkinter. Recreate .venv using Python with Tk support.'
+  exit 1
 fi
 exec .venv/bin/python -m AeroSlice.main

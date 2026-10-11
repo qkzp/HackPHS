@@ -1,0 +1,62 @@
+[
+  {
+    "size": [
+      1280,
+      800
+    ],
+    "stacked": false,
+    "preview_size": [
+      656,
+      297
+    ],
+    "horizontal_overflow": []
+  },
+  {
+    "size": [
+      1440,
+      900
+    ],
+    "stacked": false,
+    "preview_size": [
+      745,
+      397
+    ],
+    "horizontal_overflow": []
+  },
+  {
+    "size": [
+      1664,
+      919
+    ],
+    "stacked": false,
+    "preview_size": [
+      871,
+      416
+    ],
+    "horizontal_overflow": []
+  },
+  {
+    "size": [
+      1920,
+      1080
+    ],
+    "stacked": false,
+    "preview_size": [
+      1014,
+      577
+    ],
+    "horizontal_overflow": []
+  },
+  {
+    "size": [
+      800,
+      700
+    ],
+    "stacked": true,
+    "preview_size": [
+      698,
+      280
+    ],
+    "horizontal_overflow": []
+  }
+]

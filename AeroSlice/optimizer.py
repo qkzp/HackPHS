@@ -122,7 +122,10 @@ def optimize(model: Model, settings: Settings, output: Path, slicer: OrcaSlicer,
             report['assumptions'].append('FEA mode uses regional minima and simulation limits; heuristic demand coverage is not a structural constraint in this mode.')
             write_search(work,search)
             feasible_rows=[r for r in search['candidates'] if r['feasible']]
-            if not feasible_rows:raise ValueError('No FEA candidate passed the selected assessment limits and mesh-sensitivity checks. Review fea_search.json; no optimized export was generated.')
+            if not feasible_rows:
+                if not search['mesh_pass_count']:
+                    raise ValueError(f"FEA mesh accuracy check failed for all {search['combinations_tested']} candidates. Increase Coarse mesh cells in Simulation settings (currently {fea.mesh_cells}); keep the mesh tolerance unchanged. This result does not establish whether stiffness is preserved. Review fea_search.json; no optimized export was generated.")
+                raise ValueError(f"No FEA candidate passed both the assessment target and mesh accuracy checks. {search['mesh_pass_count']} passed mesh checks; {search['assessment_pass_count']} passed the assessment target before mesh checks. Review the selected target and fea_search.json; no optimized export was generated.")
             baseline=(settings.baseline,)*3
             baseline_row=next((r for r in search['candidates'] if tuple(r['densities'])==baseline),None)
             candidates=[Candidate('baseline',baseline,'Uniform reference; FEA limits evaluated separately.',bool(baseline_row and baseline_row['feasible']))]
@@ -240,6 +243,10 @@ def optimize(model: Model, settings: Settings, output: Path, slicer: OrcaSlicer,
         report['manual_steps']=manual_steps(settings)
         (work/'manual_workflow.txt').write_text('Automatic generation failed. Switch to Mode: Semiautomated to use these steps.\n\n'+'\n'.join(report['manual_steps']))
     finally:
+        if report['status']!='AUTOMATED SUCCESS':
+            for name in ('baseline.gcode','optimized.gcode'):
+                (work/name).unlink(missing_ok=True)
+            report['exports']={}
         report['compatibility']=compatibility
         (work/'compatibility_report.json').write_text(json.dumps(compatibility,indent=2))
         try:

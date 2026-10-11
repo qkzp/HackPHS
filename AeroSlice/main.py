@@ -38,14 +38,17 @@ def main() -> None:
     if args.demo or args.check_compatibility or args.model or args.fea_config:
         from .file_import import load_model
         from .optimizer import optimize
-        from .structural import Settings
+        from .structural import weight_saving_settings
         from .slicer import OrcaSlicer,Profiles
         fea=None
         if args.fea_config:
             from .fea import FEASettings
             fea=FEASettings(**json.loads(args.fea_config.read_text()));fea.validate()
-        report=optimize(load_model(args.model or examples/'demo_payload.stl'),Settings(candidate_count=6),args.output,
-                        OrcaSlicer(args.orca,args.profiles),Profiles(),print,args.semiautomated,fea)
+        slicer=OrcaSlicer(args.orca,args.profiles);profiles=Profiles();baseline=15.
+        try: baseline=slicer.starting_infill(profiles.process)
+        except (OSError,ValueError,KeyError): pass
+        report=optimize(load_model(args.model or examples/'demo_payload.stl'),weight_saving_settings(baseline),args.output,
+                        slicer,profiles,print,args.semiautomated,fea)
         print(report['status']);print(report['message']);print(report['run_directory'])
         if args.check_compatibility:
             shutil.copy2(Path(report['run_directory'])/'compatibility_report.json',args.output/'compatibility_report.json')

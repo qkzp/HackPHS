@@ -17,8 +17,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
+from .ui_components import ScrollPage, responsive_form, Tooltip
+from .motion_ui import MotionPanel
 from .file_import import load_model
-from .structural import Settings, make_regions, DISCLAIMER
+from .structural import Settings, weight_saving_settings, make_regions, DISCLAIMER
 from .optimizer import generate_candidates, optimize, write_reports
 from .slicer import OrcaSlicer, Profiles, DEFAULT_EXECUTABLE
 from .analysis import read_csv, save_csv, process_trials, summarize, stiffness, synthetic_readings
@@ -29,121 +31,312 @@ from .visualization import heatmap_figure, motion_figure, comparison_figure
 class Application(tk.Tk):
     def __init__(self, examples: Path):
         super().__init__()
-        self.title('AeroSlice • Make lighter prints');self.geometry('1250x850');self.minsize(1050,700)
+        self.title('AeroSlice • Make lighter prints');self.geometry('1440x900');self.minsize(760,640);self.configure(background='#f1f5f9')
         self.examples=examples;self.model=None;self.report=None;self.trials=[];self.readings=[];self.summary=None
         self.print_export_folder=None
-        self.busy=False;self.queue=Queue();self.cancel=Event();self.recorder=Recorder();self.figures={}
+        self.busy=False;self.task_description='Comparing designs';self.queue=Queue();self.cancel=Event();self.recorder=Recorder();self.figures={}
         self.config_path=Path.home()/'Library/Application Support/AeroSlice/config.json'
         self.config_data=json.loads((Path(__file__).parent/'config.json').read_text())
         if self.config_path.exists():
-            try: self.config_data.update(json.loads(self.config_path.read_text()))
-            except (OSError,ValueError): pass
-        self.v={};self.sections={};self.details={};style=ttk.Style(self);style.theme_use('clam')
-        style.configure('TFrame',background='#f1f5f9');style.configure('TLabel',background='#f1f5f9',foreground='#0f172a')
-        style.configure('TLabelframe',background='#f1f5f9');style.configure('TLabelframe.Label',background='#f1f5f9',foreground='#0369a1',font=('Helvetica',12,'bold'))
-        style.configure('TButton',padding=(12,8),font=('Helvetica',11));style.configure('Accent.TButton',background='#0369a1',foreground='white',font=('Helvetica',12,'bold'))
-        style.map('Accent.TButton',background=[('disabled','#cbd5e1'),('active','#075985')],foreground=[('disabled','#475569')])
-        style.configure('Hint.TLabel',foreground='#475569',font=('Helvetica',10))
-        style.configure('Metric.TLabel',foreground='#0369a1',font=('Helvetica',21,'bold'))
-        style.configure('Section.TButton',anchor='w',padding=(8,8))
-        style.configure('Treeview',rowheight=27);style.configure('TNotebook.Tab',padding=(20,10))
-        header=ttk.Frame(self,padding=(20,12));header.pack(fill='x')
-        ttk.Label(header,text='AeroSlice',font=('Helvetica',25,'bold')).pack(side='left')
-        ttk.Label(header,text='  Make lighter prints. Compare the results. Save your files.',font=('Helvetica',12)).pack(side='left',padx=10)
+            try:
+                saved=json.loads(self.config_path.read_text())
+                if isinstance(saved,dict):
+                    for key,value in saved.items():
+                        default=self.config_data.get(key)
+                        if key in self.config_data and default is not None:
+                            if isinstance(default,str) and not isinstance(value,str):continue
+                            if isinstance(default,(int,float)) and (not isinstance(value,(int,float)) or not math.isfinite(value) or value<=0):continue
+                        self.config_data[key]=value
+            except (OSError,ValueError,TypeError): pass
+        modes=('Weight saving','Weight saving + FEA comparison','FEA direct search (experimental)')
+        if self.config_data.get('simulation_mode') not in modes:
+            self.config_data['simulation_mode']='Weight saving + FEA comparison'
+        baseline=15.
+        try:
+            baseline=OrcaSlicer(self.config_data['orca_executable'],self.config_data['profile_root']).starting_infill(self.config_data['process_profile'])
+        except (OSError,ValueError,KeyError): pass
+        self.goal_defaults=weight_saving_settings(baseline)
+        count=self.config_data.get('candidate_count',self.goal_defaults.candidate_count)
+        self.goal_defaults.candidate_count=count if isinstance(count,int) and 3<=count<=20 else self.goal_defaults.candidate_count
+        self.config_data['density_set']=list(self.goal_defaults.densities)
+        self.v={};self.sections={};self.details={};self.configure_styles()
+        header=ttk.Frame(self,padding=(28,12));header.pack(fill='x')
+        ttk.Label(header,text='◈  AeroSlice',foreground='#0369a1',font=('Helvetica',24,'bold')).pack(side='left')
+        self.navigation=[]
+        nav=ttk.Frame(header);nav.pack(side='right')
+        for index,title in enumerate(('Optimize','Measurements','Results')):
+            button=ttk.Button(nav,text=title,style='Nav.TButton',command=lambda i=index:self.book.select(i))
+            button.pack(side='left',padx=4);self.navigation.append(button)
+        self.phase=self.variable('phase','01  Add a model')
         self.status=tk.StringVar(value='Start by adding a 3D model, or try the example to see how it works.')
-        ttk.Label(self,textvariable=self.status,padding=(20,8),wraplength=1180).pack(fill='x')
-        self.book=book=ttk.Notebook(self);book.pack(fill='both',expand=True,padx=15,pady=5)
-        self.optimize_tab=ttk.Frame(book,padding=10);self.sensor_tab=ttk.Frame(book,padding=10);self.dashboard_tab=ttk.Frame(book,padding=10)
+        ttk.Label(self,textvariable=self.status,style='PageHint.TLabel',padding=(28,0,28,8),wraplength=1180).pack(fill='x')
+        self.book=book=ttk.Notebook(self,style='Workspace.TNotebook');book.pack(fill='both',expand=True,padx=24,pady=(0,18))
+        self.optimize_tab=ttk.Frame(book,padding=4,style='Page.TFrame');self.sensor_tab=ttk.Frame(book,padding=16);self.dashboard_tab=ttk.Frame(book,padding=16)
         for title,tab in [('Make a lighter print',self.optimize_tab),('Test & measure (optional)',self.sensor_tab),('Your results',self.dashboard_tab)]:book.add(tab,text=title)
-        self._optimize_ui();self._sensor_ui();self._dashboard_ui()
+        self._optimize_ui()
+        self.measurement_book=ttk.Notebook(self.sensor_tab);self.measurement_book.pack(fill='both',expand=True)
+        simulation_page=ttk.Frame(self.measurement_book,padding=12)
+        measurement_page=ttk.Frame(self.measurement_book,padding=12)
+        self.measurement_book.add(simulation_page,text='Simulation')
+        self.measurement_book.add(measurement_page,text='Measurements & sensors')
+        sensor_page=ScrollPage(measurement_page);sensor_page.pack(fill='both',expand=True)
+        self.sensor_tab=sensor_page.body
+        dashboard_page=ScrollPage(self.dashboard_tab);dashboard_page.pack(fill='both',expand=True)
+        self.dashboard_page=self.dashboard_tab;self.dashboard_tab=dashboard_page.body
+        self._sensor_ui();self._dashboard_ui()
+        self.motion_panel=MotionPanel(simulation_page,self)
+        self.motion_panel.pack(fill='both',expand=True)
+        for section in self.sections.values():
+            if section['body'].grid_slaves():responsive_form(section['body'])
+        self.book.bind('<<NotebookTabChanged>>',self.refresh_navigation);self.refresh_navigation()
+        self.bind('<Command-o>',lambda _:self.invoke_shortcut(self.upload_button))
+        self.bind('<Command-Return>',lambda _:self.invoke_shortcut(self.optimize_button))
+        self.bind('<Command-s>',lambda _:self.invoke_shortcut(self.export_button))
         for key in ('orca','printer_profile','process_profile','filament_profile'):
             self.v[key].trace_add('write',lambda *_:self.update_actions())
         self.v['candidate_count'].trace_add('write',lambda *_:self.refresh_search_summary())
         self.refresh_search_summary()
+        self.adapt_labels(self)
         self.protocol('WM_DELETE_WINDOW',self.close);self.after(100,self.poll);self.update_actions()
+
+    def configure_styles(self):
+        style=ttk.Style(self);style.theme_use('clam')
+        self.option_add('*Font',('Helvetica',11))
+        style.configure('.',font=('Helvetica',12),background='white',foreground='#0f172a')
+        style.configure('TFrame',background='white');style.configure('Page.TFrame',background='#f1f5f9')
+        style.configure('TLabel',background='white',foreground='#0f172a')
+        style.configure('TLabelframe',background='white',bordercolor='#e2e8f0',relief='solid',borderwidth=1)
+        style.configure('TLabelframe.Label',background='white',foreground='#0369a1',font=('Helvetica',12,'bold'))
+        style.configure('Card.TFrame',background='white',bordercolor='#e2e8f0',relief='solid',borderwidth=1)
+        style.configure('MetricCard.TFrame',background='#e0f2fe',borderwidth=0)
+        style.configure('Hint.TLabel',background='white',foreground='#64748b',font=('Helvetica',10))
+        style.configure('PageHint.TLabel',background='#f1f5f9',foreground='#64748b',font=('Helvetica',12))
+        style.configure('Eyebrow.TLabel',background='#f1f5f9',foreground='#64748b',font=('Helvetica',10,'bold'))
+        style.configure('Badge.TLabel',background='#e0f2fe',foreground='#0369a1',font=('Helvetica',10,'bold'))
+        style.configure('CardTitle.TLabel',font=('Helvetica',15,'bold'))
+        style.configure('Metric.TLabel',background='#e0f2fe',foreground='#0369a1',font=('Helvetica',24,'bold'))
+        style.configure('MetricHint.TLabel',background='#e0f2fe',foreground='#075985',font=('Helvetica',10))
+        style.configure('Count.TLabel',background='white',foreground='#0f172a',font=('Helvetica',23,'bold'))
+        style.configure('TButton',background='white',foreground='#334155',bordercolor='#cbd5e1',lightcolor='white',darkcolor='white',padding=(14,10),font=('Helvetica',12),relief='flat',focusthickness=1,focuscolor='#0284c7')
+        style.map('TButton',background=[('disabled','#f1f5f9'),('active','#e0f2fe')],foreground=[('disabled','#94a3b8')])
+        style.configure('Accent.TButton',background='#0369a1',foreground='white',bordercolor='#0369a1',font=('Helvetica',12,'bold'))
+        style.map('Accent.TButton',background=[('disabled','#cbd5e1'),('active','#075985')],foreground=[('disabled','#64748b'),('!disabled','white')])
+        style.configure('Nav.TButton',padding=(18,10),borderwidth=0,font=('Helvetica',12))
+        style.configure('ActiveNav.TButton',padding=(18,10),borderwidth=0,background='#e0f2fe',foreground='#0369a1',font=('Helvetica',12,'bold'))
+        style.map('ActiveNav.TButton',background=[('active','#bae6fd')])
+        style.configure('Section.TButton',anchor='w',padding=(14,12),bordercolor='#e2e8f0',font=('Helvetica',11,'bold'))
+        style.configure('TEntry',padding=8,fieldbackground='#f8fafc',bordercolor='#e2e8f0',lightcolor='#e2e8f0',darkcolor='#e2e8f0')
+        style.configure('TCombobox',padding=7,fieldbackground='#f8fafc',background='#f8fafc',bordercolor='#e2e8f0',arrowsize=12)
+        style.map('TCombobox',fieldbackground=[('readonly','#f8fafc')],selectbackground=[('readonly','#f8fafc')],selectforeground=[('readonly','#0f172a')])
+        style.configure('Horizontal.TProgressbar',background='#0284c7',troughcolor='#cbd5e1',borderwidth=0,thickness=4)
+        style.configure('Treeview',background='white',fieldbackground='white',rowheight=34,borderwidth=0)
+        style.configure('Treeview.Heading',background='#f1f5f9',foreground='#475569',font=('Helvetica',10,'bold'),padding=8,relief='flat')
+        style.map('Treeview',background=[('selected','#e0f2fe')],foreground=[('selected','#0369a1')])
+        style.configure('Workspace.TNotebook',background='#f1f5f9',borderwidth=0,tabmargins=0)
+        style.layout('Workspace.TNotebook.Tab',[])
+
+    def refresh_navigation(self,event=None):
+        selected=self.book.index(self.book.select())
+        for index,button in enumerate(self.navigation):button.configure(style='ActiveNav.TButton' if index==selected else 'Nav.TButton')
+
+    @staticmethod
+    def invoke_shortcut(button):
+        if str(button['state'])!='disabled':button.invoke()
+        return 'break'
+
+    def card(self,parent,title,padding=16):
+        card=ttk.Frame(parent,style='Card.TFrame',padding=padding)
+        ttk.Label(card,text=title,style='CardTitle.TLabel').pack(anchor='w',pady=(0,8))
+        return card
 
     def variable(self,key,value):
         self.v[key]=tk.StringVar(value=str(value));return self.v[key]
 
+    def apply_retention_slider(self,value):
+        if not self.syncing_stiffness:self.v['fea_retention'].set(str(round(float(value))))
+
+    def refresh_retention_target(self):
+        try:value=float(self.v['fea_retention'].get())
+        except ValueError:value=float('nan')
+        if math.isfinite(value) and 0<value<=100:
+            self.syncing_stiffness=True
+            try:self.retention_scale.set(value)
+            finally:self.syncing_stiffness=False
+            self.v['target_summary'].set(f'Allow up to {100-value:g}% predicted stiffness loss. Applies to FEA comparison.')
+        else:self.v['target_summary'].set('Enter a stiffness target greater than 0 and up to 100%.')
+
+    def set_preview_view(self,elevation,azimuth):
+        canvas=self.figures.get('preview')
+        if canvas:
+            canvas.figure.axes[0].view_init(elev=elevation,azim=azimuth);canvas.draw_idle()
+
+    def build_metrics(self,parent):
+        metrics=ttk.Frame(parent);metrics.pack(fill='x',pady=(8,4))
+        cards=[]
+        for key,label in (('before','Baseline mass'),('after','Optimized mass'),('saving','Material saved'),('stiffness','Stiffness retained')):
+            card=ttk.Frame(metrics,style='MetricCard.TFrame',padding=12);cards.append(card)
+            ttk.Label(card,text=label,style='MetricHint.TLabel',wraplength=110).pack(anchor='w')
+            value_label=ttk.Label(card,textvariable=self.metric_vars[key],style='Metric.TLabel')
+            value_label.pack(anchor='w',pady=(8,4))
+            self.metric_vars[key].trace_add('write',lambda *_,label=value_label,var=self.metric_vars[key]:label.configure(font=('Helvetica',12 if var.get()=='Not assessed' else 24,'bold')))
+            ttk.Label(card,text='FEA prediction' if key=='stiffness' else 'Slicer estimate',style='MetricHint.TLabel').pack(anchor='w')
+        state=[None]
+        def arrange(event):
+            columns=4 if event.width>=560 else 2
+            if state[0]==columns:return
+            state[0]=columns
+            for col in range(4):metrics.columnconfigure(col,weight=1 if col<columns else 0,uniform='metrics' if col<columns else '')
+            for i,card in enumerate(cards):card.grid(row=i//columns,column=i%columns,sticky='nsew',padx=4,pady=4)
+        metrics.bind('<Configure>',arrange)
+        return cards
+
+    def arrange_workspace(self,event):
+        narrow=event.width<1060
+        if getattr(self,'stacked_workspace',None)!=narrow:
+            self.stacked_workspace=narrow
+            self.workspace.columnconfigure(0,weight=1 if narrow else 44,uniform='' if narrow else 'workspace')
+            self.workspace.columnconfigure(1,weight=0 if narrow else 56,uniform='' if narrow else 'workspace')
+            self.settings_column.grid_configure(row=0,column=0,padx=(0,0) if narrow else (0,16))
+            self.visual_column.grid_configure(row=1 if narrow else 0,column=0 if narrow else 1,pady=(16,0) if narrow else 0)
+        self.optimize_page.fixed_viewport=not narrow
+        self.settings_scroll.expand_content=narrow
+        self.settings_scroll.refresh()
+        self.optimize_page.refresh()
+
+    def fit_preview(self):
+        canvas=self.figures.get('preview')
+        if not canvas or self.model is None:return
+        ax=canvas.figure.axes[0]
+        centers=self.model.bounds.mean(axis=0);spans=self.model.dimensions*1.12
+        ax.set(xlim=(centers[0]-spans[0]/2,centers[0]+spans[0]/2),
+               ylim=(centers[1]-spans[1]/2,centers[1]+spans[1]/2),
+               zlim=(centers[2]-spans[2]/2,centers[2]+spans[2]/2))
+        ax.set_box_aspect(self.model.dimensions,zoom=1.12)
+        ax.view_init(elev=25,azim=-40);canvas.draw_idle()
+
+    def adapt_labels(self,parent):
+        for child in parent.winfo_children():
+            if isinstance(child,ttk.Label) and float(child.cget('wraplength') or 0)>0:
+                def wrap(event,label=child,container=parent):
+                    # Toplevel bindings also receive descendant events via bindtags.
+                    if event.widget is not container:return
+                    width=max(100,event.width-(56 if container is self else 32))
+                    if int(float(label.cget('wraplength')))!=width:label.configure(wraplength=width)
+                parent.bind('<Configure>',wrap,add='+')
+            self.adapt_labels(child)
+
+    def zoom_preview(self,event):
+        canvas=self.figures.get('preview')
+        if canvas and event.inaxes is canvas.figure.axes[0]:
+            axis=canvas.figure.axes[0];factor=.9 if event.button=='up' else 1/.9
+            current=np.array([axis.get_xlim(),axis.get_ylim(),axis.get_zlim()])
+            centers=current.mean(axis=1);spans=np.diff(current,axis=1).ravel()*factor
+            if self.model is not None and np.all(spans>=self.model.dimensions*.15) and np.all(spans<=self.model.dimensions*8):
+                axis.set(xlim=(centers[0]-spans[0]/2,centers[0]+spans[0]/2),ylim=(centers[1]-spans[1]/2,centers[1]+spans[1]/2),zlim=(centers[2]-spans[2]/2,centers[2]+spans[2]/2));canvas.draw_idle()
+
     def field(self,parent,key,label,default,row,column=0,width=13,choices=None):
         ttk.Label(parent,text=label).grid(row=row,column=column*2,sticky='w',padx=5,pady=4)
         var=self.variable(key,default)
-        widget=ttk.Combobox(parent,textvariable=var,values=choices,state='readonly',width=width) if choices else ttk.Entry(parent,textvariable=var,width=width)
+        widget=ttk.Combobox(parent,textvariable=var,values=choices,state='readonly',width=width) if choices is not None else ttk.Entry(parent,textvariable=var,width=width)
         widget.grid(row=row,column=column*2+1,sticky='ew',padx=5,pady=4);return widget
 
     def _optimize_ui(self):
-        panel=ttk.Frame(self.optimize_tab);panel.pack(side='left',fill='both',expand=True,padx=(0,10))
-        self.action_footer=ttk.Frame(panel);self.action_footer.pack(side='bottom',fill='x',pady=(6,0))
-        scroll=ttk.Frame(panel);scroll.pack(fill='both',expand=True)
-        self.controls_canvas=tk.Canvas(scroll,highlightthickness=0,background='#f1f5f9',width=575)
-        scrollbar=ttk.Scrollbar(scroll,orient='vertical',command=self.controls_canvas.yview)
-        scrollbar.pack(side='right',fill='y');self.controls_canvas.pack(side='left',fill='both',expand=True)
-        self.controls_canvas.configure(yscrollcommand=scrollbar.set)
-        left=ttk.Frame(self.controls_canvas)
-        window=self.controls_canvas.create_window((0,0),window=left,anchor='nw')
-        left.bind('<Configure>',lambda _:self.controls_canvas.configure(scrollregion=self.controls_canvas.bbox('all')))
-        self.controls_canvas.bind('<Configure>',lambda e:self.controls_canvas.itemconfigure(window,width=e.width))
-        self.bind('<MouseWheel>',self.scroll_controls)
-        right=ttk.Frame(self.optimize_tab);right.pack(side='right',fill='both',expand=True)
-        upload=ttk.LabelFrame(left,text='1  Add your model',padding=14);upload.pack(fill='x',pady=(0,10))
-        ttk.Label(upload,text='Choose the object you want to print. Your original file stays unchanged.',wraplength=490,style='Hint.TLabel').pack(anchor='w',pady=(0,10))
+        self.action_footer=ttk.Frame(self.optimize_tab,padding=(16,10))
+        self.action_footer.pack(side='bottom',fill='x',pady=(8,0))
+        self.action_footer.columnconfigure(0,weight=44,uniform='footer')
+        self.action_footer.columnconfigure(1,weight=56,uniform='footer')
+        action_area=ttk.Frame(self.action_footer);action_area.grid(row=0,column=0,sticky='nsew',padx=(0,16))
+        file_footer=ttk.Frame(self.action_footer);file_footer.grid(row=0,column=1,sticky='nsew')
+        self.optimize_page=ScrollPage(self.optimize_tab)
+        self.optimize_page.pack(fill='both',expand=True)
+        self.controls_canvas=self.optimize_page.canvas
+        self.workspace=self.optimize_page.body
+        self.settings_scroll=ScrollPage(self.workspace)
+        self.settings_column=self.settings_scroll
+        left=self.settings_scroll.body
+        self.visual_column=right=ttk.Frame(self.workspace,style='Page.TFrame')
+        self.settings_column.grid(row=0,column=0,sticky='nsew',padx=(0,16))
+        right.grid(row=0,column=1,sticky='nsew')
+        self.workspace.columnconfigure(0,weight=44,uniform='workspace')
+        self.workspace.columnconfigure(1,weight=56,uniform='workspace')
+        self.workspace.rowconfigure(0,weight=1)
+        self.workspace.bind('<Configure>',self.arrange_workspace)
+        upload=self.card(left,'01  Your model');upload.pack(fill='x',pady=(0,14))
+        ttk.Label(upload,text='Start with your STL. We optimize its internal fill and keep its shape.',wraplength=490,style='Hint.TLabel').pack(anchor='w',pady=(0,14))
         row=ttk.Frame(upload);row.pack(fill='x')
-        self.upload_button=ttk.Button(row,text='Add 3D model…',style='Accent.TButton',command=self.upload_model);self.upload_button.pack(side='left')
+        self.upload_button=ttk.Button(row,text='Upload Model…',style='Accent.TButton',command=self.upload_model);self.upload_button.pack(side='left')
         ttk.Button(row,text='Try an example',command=self.demo_model).pack(side='left',padx=8)
         self.model_info=self.variable('model_info','STL and 3MF files supported. No model added yet.')
-        ttk.Label(upload,textvariable=self.model_info,wraplength=490).pack(anchor='w',pady=(12,0))
-        setup=ttk.LabelFrame(left,text='2  Choose your setup',padding=14);setup.pack(fill='x',pady=(0,10))
+        self.model_label=ttk.Label(upload,textvariable=self.model_info,wraplength=490)
+        self.model_label.pack(anchor='w',pady=(12,0))
+        Tooltip(self.model_label,lambda:str(self.model.path) if self.model else 'Upload an STL or compatible 3MF model.')
+        setup=self.card(left,'02  Print setup & goals');setup.pack(fill='x',pady=(0,14))
         self.setup_summary=self.variable('setup_summary','')
         ttk.Label(setup,textvariable=self.setup_summary,wraplength=490,font=('Helvetica',11,'bold')).pack(anchor='w')
-        ttk.Label(setup,text='Infill is the structure inside your print. AeroSlice compares layouts that use less material. Defaults assume your object rests on its lower face; change this in Advanced settings if needed.',wraplength=490,style='Hint.TLabel').pack(anchor='w',pady=(8,12))
         material_row=ttk.Frame(setup);material_row.pack(fill='x',pady=(0,12))
         ttk.Label(material_row,text='Material on your spool').pack(side='left',padx=(0,12))
         self.material_choice=self.variable('material_choice','')
         self.material_box=ttk.Combobox(material_row,textvariable=self.material_choice,state='readonly',width=25)
-        self.material_box.pack(side='left');self.material_box.bind('<<ComboboxSelected>>',self.apply_material_choice)
+        self.material_box.pack(side='left',fill='x',expand=True);self.material_box.bind('<<ComboboxSelected>>',self.apply_material_choice)
         self.material_profiles={}
+        Tooltip(self.material_box,lambda:self.v['filament_profile'].get())
         search=ttk.Frame(setup);search.pack(fill='x')
         ttk.Label(search,text='How many designs?').pack(side='left',padx=(0,12))
         self.search_choice=self.variable('search_choice','Standard · 8 designs')
         self.search_box=ttk.Combobox(search,textvariable=self.search_choice,state='readonly',width=25,values=['Quick · 3 designs','Standard · 8 designs','Detailed · 12 designs'])
-        self.search_box.pack(side='left');self.search_box.bind('<<ComboboxSelected>>',self.apply_search_choice)
+        self.search_box.pack(side='left',fill='x',expand=True);self.search_box.bind('<<ComboboxSelected>>',self.apply_search_choice)
         self.search_help=self.variable('search_help','More designs give a wider comparison and take longer. This does not certify strength.')
-        ttk.Label(setup,textvariable=self.search_help,wraplength=490,style='Hint.TLabel').pack(anchor='w',pady=(8,12))
+        search_help_label=ttk.Label(setup,textvariable=self.search_help,wraplength=490,style='Hint.TLabel');search_help_label.pack(anchor='w',pady=(8,12))
         method=ttk.Frame(setup);method.pack(fill='x',pady=(0,10))
-        ttk.Label(method,text='Optimization method').pack(side='left',padx=(0,10))
-        self.variable('simulation_mode','Weight saving')
-        self.simulation_box=ttk.Combobox(method,textvariable=self.v['simulation_mode'],state='readonly',width=29,
+        ttk.Label(method,text='Optimization method').pack(anchor='w',pady=(0,6))
+        self.variable('simulation_mode',self.config_data.get('simulation_mode','Weight saving + FEA comparison'))
+        self.simulation_box=ttk.Combobox(method,textvariable=self.v['simulation_mode'],state='readonly',width=36,
             values=['Weight saving','Weight saving + FEA comparison','FEA direct search (experimental)'])
-        self.simulation_box.pack(side='left')
+        self.simulation_box.pack(fill='x',expand=True)
         self.simulation_box.bind('<<ComboboxSelected>>',lambda event:self.update_actions())
-        save=ttk.Frame(setup);save.pack(fill='x')
-        ttk.Label(save,text='Save working files in').pack(anchor='w')
-        self.variable('output',self.config_data.get('output_folder',str(Path.cwd()/'outputs')))
-        ttk.Entry(save,textvariable=self.v['output'],width=42).pack(side='left',fill='x',expand=True,pady=5)
-        ttk.Button(save,text='Choose folder…',command=self.choose_output).pack(side='left',padx=(8,0))
+        target=ttk.Frame(setup);target.pack(fill='x',pady=(0,10))
+        self.stiffness_target_entry=self.field(target,'fea_retention','Minimum stiffness retained (%)',self.config_data.get('stiffness_retention_percent',95),0,width=6)
+        target.columnconfigure(0,weight=1)
+        extra_target=self.disclosure(setup,'retention_options','Stiffness target presets & slider')
+        self.retention_scale=ttk.Scale(extra_target,from_=50,to=100,command=self.apply_retention_slider)
+        self.retention_scale.pack(fill='x',padx=5,pady=(4,8))
+        self.variable('target_summary','')
+        ttk.Label(target,textvariable=self.v['target_summary'],wraplength=490,style='Hint.TLabel').grid(row=2,column=0,columnspan=2,sticky='w',padx=5,pady=4)
+        presets=ttk.Frame(extra_target);presets.pack(fill='x',pady=(4,0))
+        self.retention_presets=[]
+        for value,label in ((95,'95% Balanced'),(98,'98% Strict'),(100,'100% Full')):
+            button=ttk.Button(presets,text=label,command=lambda v=value:self.v['fea_retention'].set(str(v)))
+            button.pack(side='left',fill='x',expand=True,padx=(0,4));self.retention_presets.append(button)
+        self.syncing_stiffness=False
+        self.v['fea_retention'].trace_add('write',lambda *_:self.refresh_retention_target())
+        self.refresh_retention_target()
+        search.pack_forget();search_help_label.pack_forget()
+        search.pack(fill='x',pady=(10,0));search_help_label.pack(anchor='w',pady=(8,12))
         settings=self.disclosure(left,'optimization','Advanced: infill & engineering settings')
         ttk.Label(settings,text='Defaults assume the object rests on its lower face. Change these for a different orientation or support arrangement. These are engineering assumptions, not a strength guarantee.',wraplength=490,style='Hint.TLabel').grid(row=0,column=0,columnspan=4,sticky='w',padx=5,pady=8)
-        fields=[('baseline','Starting infill (%)',20),('minimum','Lowest allowed (%)',10),('maximum','Highest allowed (%)',30),('candidate_count','Designs to compare',self.config_data.get('candidate_count',8)),('coverage','Demand coverage (0–1)',.75),('acceleration','Acceleration (m/s²)',0)]
+        defaults=self.goal_defaults
+        fields=[('baseline','Starting infill (%)',defaults.baseline),('minimum','Lowest allowed (%)',defaults.minimum),('maximum','Highest allowed (%)',defaults.maximum),('candidate_count','Designs to compare',defaults.candidate_count),('coverage','Demand coverage (0–1)',defaults.coverage),('acceleration','Acceleration (m/s²)',0)]
         for i,(key,label,val) in enumerate(fields):self.field(settings,key,label,val,1+i//2,i%2)
-        self.field(settings,'contact_axis','Support / region axis','z',4,0,choices=['x','y','z'])
-        self.field(settings,'contact_face','Support face','min',4,1,choices=['min','max'])
+        self.field(settings,'contact_axis','Support / region axis',self.config_data.get('contact_axis','z'),4,0,choices=['x','y','z'])
+        self.field(settings,'contact_face','Support face',self.config_data.get('contact_face','min'),4,1,choices=['min','max'])
         self.field(settings,'load_axis','Load direction','z',5,0,choices=['x','y','z'])
-        self.field(settings,'protected','Region minimums (%)','15,10,10',5,1)
+        self.field(settings,'protected','Region minimums (%)',','.join(f'{d:g}' for d in defaults.protected_minima),5,1)
         self.field(settings,'rotation','Rotation X,Y,Z (°)','0,0,0',6,0)
         self.field(settings,'demand','Custom demand (0–1)','',6,1)
         self.field(settings,'fixed_mass','Other moving mass (g)','',7,0)
         ttk.Label(settings,text=DISCLAIMER+' Blank custom demand uses the load-path heuristic; unknown hardware mass can stay blank.',wraplength=490,style='Hint.TLabel').grid(row=8,column=0,columnspan=4,sticky='w',padx=5,pady=8)
+        ttk.Label(settings,text='Weight-saving preset: starting infill follows the selected profile at launch; search up to 12 designs with lower infill. Match your Orca settings here when comparing a custom print.',wraplength=490,style='Hint.TLabel').grid(row=9,column=0,columnspan=4,sticky='w',padx=5,pady=8)
         simulation=self.disclosure(left,'simulation','Simulation: material, loads & limits')
         ttk.Label(simulation,text='Weight saving + FEA comparison uses a normalized reference load to compare stiffness with your original design; no thrust value is needed. The full support face is clamped. Material defaults are demonstration assumptions. Actual force and strength limits apply only to the advanced FEA direct search mode.',wraplength=490,style='Hint.TLabel').grid(row=0,column=0,columnspan=4,sticky='w',padx=5,pady=8)
-        fields=[('fea_force_axis','Comparison / force axis','z'),('fea_retention','Retain relative stiffness (%)',75),
+        fields=[('fea_force_axis','Stiffness test / force axis',self.config_data.get('fea_force_axis','z')),
                 ('fea_e_xy','XY modulus (MPa)',2000),('fea_e_z','Z modulus (MPa)',1000),
                 ('fea_g_xz','XZ/YZ shear modulus',400),('fea_nu_xy','XY Poisson ratio',.3),
                 ('fea_nu_xz','XZ Poisson ratio',.25),('fea_e_power','Stiffness density power',2),
-                ('fea_mesh','Coarse mesh cells',6),('fea_tolerance','Mesh tolerance (0–0.5)',.2)]
+                ('fea_mesh','Coarse mesh cells',9),('fea_tolerance','Mesh tolerance (0–0.5)',.2)]
         for i,(key,label,value) in enumerate(fields):
             self.field(simulation,key,label,value,1+i//2,i%2,choices=['x','y','z'] if key=='fea_force_axis' else None)
         self.field(simulation,'fea_source','Material data source','DEMONSTRATION assumptions; uncalibrated',6,width=31)
-        ttk.Label(simulation,text='The default 75% relative-stiffness target is an adjustable comparison rule, not a validated strength threshold. All density combinations within regional bounds are simulated on two meshes; design count controls the slicing shortlist. The outer model shape stays the same. No buckling, fatigue or impact analysis.',wraplength=490,style='Hint.TLabel').grid(row=7,column=0,columnspan=4,sticky='w',padx=5,pady=8)
+        ttk.Label(simulation,text='The default 95% target allows up to 5% predicted stiffness loss; it is not a 5% simulation-error guarantee or a validated strength threshold. All density combinations within regional bounds are simulated on two meshes; design count controls the slicing shortlist. Optimization preserves the original outer shape. No buckling, fatigue or impact analysis.',wraplength=490,style='Hint.TLabel').grid(row=7,column=0,columnspan=4,sticky='w',padx=5,pady=8)
         actual_container=ttk.Frame(simulation);actual_container.grid(row=8,column=0,columnspan=4,sticky='ew')
         actual=self.disclosure(actual_container,'simulation_absolute','Actual-load assessment (advanced)')
         absolute_fields=[('fea_force','Total signed force (N)',''),('fea_strength_xy','XY strength input (MPa)',25),
@@ -167,37 +360,49 @@ class Application(tk.Tk):
         tools=ttk.Frame(integration);tools.grid(row=8,column=0,columnspan=3,sticky='ew',pady=8)
         self.check_button=ttk.Button(tools,text='Check my printer setup',command=self.check_compatibility);self.check_button.pack(side='left')
         self.generate_button=ttk.Button(tools,text='Preview design options',command=self.generate);self.generate_button.pack(side='left',padx=5)
-        actions=ttk.Frame(self.action_footer);actions.pack(fill='x',pady=4)
+        save=ttk.Frame(integration);save.grid(row=9,column=0,columnspan=3,sticky='ew',pady=8)
+        ttk.Label(save,text='Save working files in').pack(anchor='w')
+        self.variable('output',self.config_data.get('output_folder',str(Path.cwd()/'outputs')))
+        ttk.Entry(save,textvariable=self.v['output'],width=42).pack(side='left',fill='x',expand=True,pady=5)
+        ttk.Button(save,text='Choose folder…',command=self.choose_output).pack(side='left',padx=(8,0))
+        actions=ttk.Frame(action_area);actions.pack(fill='x',pady=4)
         self.next_step=self.variable('next_step','Next: add a model to unlock the comparison.')
         ttk.Label(actions,textvariable=self.next_step,wraplength=500,style='Hint.TLabel').grid(row=0,column=0,columnspan=2,sticky='w',pady=(2,8))
-        self.optimize_button=ttk.Button(actions,text='Find a lighter print',style='Accent.TButton',command=self.start_optimization);self.optimize_button.grid(row=1,column=0,padx=(0,5),sticky='ew')
+        self.optimize_button=ttk.Button(actions,text='Optimize Model',style='Accent.TButton',command=self.start_optimization);self.optimize_button.grid(row=1,column=0,padx=(0,5),sticky='ew')
         self.cancel_button=ttk.Button(actions,text='Stop',command=self.cancel.set);self.cancel_button.grid(row=1,column=1,sticky='ew')
         actions.columnconfigure(0,weight=1)
-        self.progress_bar=ttk.Progressbar(self.action_footer,mode='indeterminate');self.progress_bar.pack(fill='x',pady=5)
-        results=ttk.LabelFrame(right,text='3  Compare your results',padding=12);results.pack(fill='x',pady=(0,10))
-        metrics=ttk.Frame(results);metrics.pack(fill='x')
-        self.metric_vars={}
-        for i,(key,label) in enumerate([('before','Baseline estimate'),('after','Optimized estimate'),('saving','Material saved')]):
-            card=ttk.Frame(metrics);card.grid(row=0,column=i,sticky='nsew',padx=6);metrics.columnconfigure(i,weight=1)
-            ttk.Label(card,text=label,style='Hint.TLabel').pack(anchor='w')
-            var=self.variable('metric_'+key,'—');self.metric_vars[key]=var
-            ttk.Label(card,textvariable=var,style='Metric.TLabel').pack(anchor='w',pady=4)
-        self.result_hint=self.variable('result_hint','Your estimates will appear here after the comparison. No printing knowledge needed to get started.')
+        self.progress_bar=ttk.Progressbar(action_area,mode='indeterminate');self.progress_bar.pack(fill='x',pady=5);self.progress_bar.pack_forget()
+        Tooltip(self.optimize_button,'Optimize Model · ⌘Return\nUpload model · ⌘O   Save G-code · ⌘S')
+        results=ttk.Frame(right,style='Card.TFrame',padding=12);results.pack(fill='x',pady=(0,14))
+        self.metric_vars={key:self.variable('metric_'+key,'—') for key in ('before','after','saving','stiffness')}
+        self.metric_cards=self.build_metrics(results)
+        self.result_hint=self.variable('result_hint','Estimates appear here after optimization.')
         ttk.Label(results,textvariable=self.result_hint,wraplength=510,style='Hint.TLabel').pack(anchor='w',pady=(8,0))
-        preview=ttk.LabelFrame(right,text='Your model • drag to rotate',padding=5);preview.pack(fill='both',expand=True)
-        self.preview_container=preview
-        self.preview_empty=ttk.Label(preview,text='Add a model to see it here.\n\nNew to 3D printing? Try the example first.',anchor='center',justify='center',style='Hint.TLabel');self.preview_empty.pack(fill='both',expand=True,pady=25)
-        detail=self.disclosure(right,'designs','Details: compare all designs')
+        preview=self.card(right,'Model preview',padding=14);preview.pack(fill='both',expand=True)
+        preview.configure(height=360)
+        preview_toolbar=ttk.Frame(preview);preview_toolbar.pack(fill='x')
+        ttk.Label(preview_toolbar,text='Drag to rotate · scroll to zoom',style='Hint.TLabel').pack(side='left')
+        self.view_buttons=[]
+        for name,angles in (('3D',(25,-40)),('Top',(90,-90)),('Front',(0,-90)),('Fit',(25,-40))):
+            button=ttk.Button(preview_toolbar,text=name,padding=(10,5),command=self.fit_preview if name=='Fit' else lambda a=angles:self.set_preview_view(*a))
+            button.pack(side='right',padx=3);self.view_buttons.append(button)
+        self.preview_container=ttk.Frame(preview,height=280);self.preview_container.pack(fill='both',expand=True)
+        self.preview_container.pack_propagate(False)
+        self.preview_empty=ttk.Label(self.preview_container,text='YOUR MODEL WILL APPEAR HERE\n\nAdd an STL or try the example to explore.',anchor='center',justify='center',style='Hint.TLabel');self.preview_empty.pack(fill='both',expand=True,pady=25)
+        detail=self.disclosure(left,'designs','Details: compare all designs')
         self.tree=ttk.Treeview(detail,columns=('design','mass','time','status'),show='headings',height=5)
         for key,label,width in [('design','Design',180),('mass','Material (g)',90),('time','Print time',100),('status','File checks',100)]:self.tree.heading(key,text=label);self.tree.column(key,width=width)
-        self.tree.tag_configure('selected',background='#d1fae5');self.tree.tag_configure('failed',foreground='#9f1239')
+        self.tree.tag_configure('selected',background='#e0f2fe');self.tree.tag_configure('failed',foreground='#9f1239')
         self.tree.pack(fill='both',expand=True)
+        self.tree.bind('<Configure>',lambda e:[self.tree.column(key,width=max(50,int((e.width-4)*fraction)),minwidth=50) for key,fraction in zip(('design','mass','time','status'),(.36,.19,.22,.23))])
         ttk.Label(detail,text='Mass and time come from OrcaSlicer estimates. Passing file checks does not prove strength.',wraplength=510,style='Hint.TLabel').pack(anchor='w',pady=5)
         ttk.Button(detail,text='Import a manually sliced comparison…',command=self.import_slices).pack(anchor='w',pady=3)
-        export=ttk.LabelFrame(right,text='4  Save your print files',padding=10);export.pack(fill='x',pady=(8,0))
-        self.export_button=ttk.Button(export,text='Save G-code…',style='Accent.TButton',command=self.export_files);self.export_button.pack(side='left')
-        self.open_button=ttk.Button(export,text='Open working folder',command=self.open_output);self.open_button.pack(side='left',padx=8)
-        ttk.Label(right,text='Material and time are estimates. Strength needs a physical test. Review the files in OrcaSlicer before printing.',wraplength=540,style='Hint.TLabel').pack(fill='x',pady=8)
+        ttk.Label(file_footer,text='Print files',style='Hint.TLabel').pack(anchor='w',pady=(2,8))
+        export=ttk.Frame(file_footer);export.pack(fill='x')
+        self.export_button=ttk.Button(export,text='Save Optimized G-code…',style='Accent.TButton',command=self.export_files);self.export_button.pack(side='left',fill='x',expand=True)
+        self.open_button=ttk.Button(export,text='Open working folder',command=self.open_output);self.open_button.pack(side='left',padx=(8,0))
+        self.export_status=self.variable('export_status','No optimized G-code generated yet.')
+        ttk.Label(file_footer,textvariable=self.export_status,style='Hint.TLabel').pack(anchor='w',pady=(8,0))
 
     def disclosure(self,parent,key,title):
         outer=ttk.Frame(parent);outer.pack(fill='x',pady=4)
@@ -226,7 +431,8 @@ class Application(tk.Tk):
     def refresh_setup_summary(self):
         printer=self.v['printer_profile'].get();material=self.v['filament_profile'].get()
         self.refresh_material_choices()
-        self.setup_summary.set(f"Printer: {Path(printer).stem if printer.endswith('.json') else printer}\nMaterial: {Path(material).stem if material.endswith('.json') else material}")
+        display=Path(printer).stem if printer.endswith('.json') else printer
+        self.setup_summary.set(display+' · '+self.material_choice.get().split(' · ')[0])
 
 
     def refresh_material_choices(self):
@@ -254,12 +460,6 @@ class Application(tk.Tk):
         selected=self.material_profiles.get(self.material_choice.get())
         if selected:self.v['filament_profile'].set(selected)
 
-    def scroll_controls(self,event):
-        canvas=self.controls_canvas
-        if canvas.winfo_ismapped() and canvas.winfo_rootx()<=event.x_root<canvas.winfo_rootx()+canvas.winfo_width() and canvas.winfo_rooty()<=event.y_root<canvas.winfo_rooty()+canvas.winfo_height():
-            steps=int(-event.delta/120) if abs(event.delta)>=120 else int(-event.delta)
-            canvas.yview_scroll(steps,'units')
-
     def _sensor_ui(self):
         ttk.Label(self.sensor_tab,text='Does your lighter print climb faster?',font=('Helvetica',18,'bold')).pack(anchor='w',pady=(0,8))
         ttk.Label(self.sensor_tab,text='Optional: compare readings from the vertical rig. You can import a CSV without connecting hardware, or explore a clearly labeled simulation.',wraplength=1080,style='Hint.TLabel').pack(anchor='w')
@@ -283,7 +483,7 @@ class Application(tk.Tk):
         ttk.Checkbutton(advanced,text='Pair tests with matching trial IDs',variable=self.paired).grid(row=1,column=3,columnspan=3,sticky='w')
         live=self.disclosure(self.sensor_tab,'live','Connect an ESP32 for live recording')
         self.port_box=self.field(live,'port','Serial port','',0,0,width=25,choices=ports())
-        ttk.Button(live,text='Refresh ports',command=lambda:self.port_box.configure(values=ports())).grid(row=0,column=2)
+        ttk.Button(live,text='Refresh ports',command=self.refresh_ports).grid(row=0,column=2)
         ttk.Button(live,text='Connect',command=self.connect_serial).grid(row=0,column=3)
         ttk.Button(live,text='Disconnect',command=self.recorder.disconnect).grid(row=0,column=4)
         self.field(live,'trial_id','Trial ID','1',1,0)
@@ -295,19 +495,22 @@ class Application(tk.Tk):
         self.field(live,'interval_ms','Interval (ms)',self.config_data['sensor_interval_ms'],2,2)
         ttk.Button(live,text='Configure sensor',command=self.configure_sensor).grid(row=2,column=6)
         ttk.Label(live,text='Verify the actual sensor, wiring and GPIOs first. This app records measurements only; motor activation is separate.',wraplength=1050,style='Hint.TLabel').grid(row=3,column=0,columnspan=7,sticky='w',pady=5)
+        responsive_form(controls,breakpoint=1200)
         self.sensor_label=self.variable('sensor_label','No readings yet. Start with a CSV or the simulated example.')
         ttk.Label(self.sensor_tab,textvariable=self.sensor_label,wraplength=1100,style='Hint.TLabel').pack(fill='x',pady=6)
-        self.motion_container=ttk.Frame(self.sensor_tab);self.motion_container.pack(fill='both',expand=True,pady=4)
+        self.motion_container=ttk.Frame(self.sensor_tab,height=330);self.motion_container.pack(fill='both',expand=True,pady=4)
         footer=ttk.Frame(self.sensor_tab);footer.pack(fill='x')
         ttk.Button(footer,text='Save original readings…',command=self.save_sensor).pack(side='left')
         ttk.Button(footer,text='Save report & charts…',command=self.export_sensor).pack(side='left',padx=8)
 
     def _dashboard_ui(self):
         top=ttk.Frame(self.dashboard_tab);top.pack(fill='x',pady=(0,8))
-        ttk.Label(top,text='Your results, explained',font=('Helvetica',18,'bold')).pack(side='left')
+        ttk.Label(top,text='Your results, explained',font=('Helvetica',22,'bold')).pack(side='left')
         ttk.Button(top,text='View technical details…',command=self.view_details).pack(side='right')
         ttk.Label(self.dashboard_tab,text='Print estimates, real measurements and simulated examples are labeled separately.',style='Hint.TLabel').pack(anchor='w')
-        self.dashboard_text=tk.Text(self.dashboard_tab,height=13,wrap='word',font=('Helvetica',12),bg='white',fg='#0f172a',padx=18,pady=14,relief='flat')
+        self.build_metrics(self.dashboard_tab)
+        self.dashboard_text=tk.Text(self.dashboard_tab,height=13,wrap='word',font=('Helvetica',12),bg='#f8fafc',fg='#334155',padx=24,pady=20,relief='flat',spacing1=3,spacing3=3,highlightthickness=1,highlightbackground='#e2e8f0')
+        self.dashboard_text.tag_configure('heading',font=('Helvetica',12,'bold'),foreground='#0369a1',spacing1=12,spacing3=8)
         self.dashboard_text.pack(fill='both',expand=True,pady=10)
         self.comparison_container=ttk.Frame(self.dashboard_tab);self.comparison_container.pack(fill='both',expand=True)
         box=self.disclosure(self.dashboard_tab,'measurements','Add measurements from your real print')
@@ -321,7 +524,7 @@ class Application(tk.Tk):
         self.field(stiffness_box,'stiff_mass','Specimen mass (g)','',1,0)
         self.field(stiffness_box,'conditions','How it was supported / loaded','',1,1,width=28)
         ttk.Button(stiffness_box,text='Calculate stiffness',command=self.calculate_stiffness).grid(row=1,column=4)
-        self.dashboard_write('Start with a model in “Make a lighter print”.\n\nAeroSlice will compare estimated material use and print time, then prepare the selected files for OrcaSlicer.\n\nYou can also import rig measurements in “Test & measure” to compare climb times. A faster climb does not prove a stronger print.\n\nStrength has not been independently verified. Hardware measurements are optional and start empty.')
+        self.dashboard_write('Start with a model in “Optimize”.\n\nAeroSlice will compare estimated material use and print time, then prepare the selected files for OrcaSlicer.\n\nYou can also import rig measurements in “Measurements” to compare climb times. A faster climb does not prove a stronger print.\n\nStrength has not been independently verified. Hardware measurements are optional and start empty.')
 
     def view_details(self):
         window=tk.Toplevel(self);window.title('AeroSlice • Technical details');window.geometry('850x600')
@@ -331,10 +534,14 @@ class Application(tk.Tk):
         text.configure(state='disabled')
         ttk.Button(window,text='Close',command=window.destroy).pack(pady=8)
 
-    def dashboard_write(self,text,append=False):
+    def dashboard_write(self,text,append=False,section=None):
         self.dashboard_text.configure(state='normal')
         if not append:self.dashboard_text.delete('1.0','end')
-        self.dashboard_text.insert('end',text+'\n');self.dashboard_text.configure(state='disabled')
+        for line in text.splitlines():
+            tags=('heading',) if line.isupper() and len(line)<100 else ()
+            if section:tags+= (section,)
+            self.dashboard_text.insert('end',line+'\n',tags)
+        self.dashboard_text.configure(state='disabled')
 
     def show_figure(self,key,container,figure):
         if key in self.figures:
@@ -391,27 +598,39 @@ class Application(tk.Tk):
 
     def update_actions(self):
         loaded=self.model is not None and not self.busy
-        self.upload_button.configure(state='disabled' if self.busy else 'normal',text='Replace model…' if self.model else 'Add 3D model…')
+        self.upload_button.configure(state='disabled' if self.busy else 'normal',text='Replace model…' if self.model else 'Upload Model…')
         self.search_box.configure(state='disabled' if self.busy else 'readonly')
         self.material_box.configure(state='disabled' if self.busy else 'readonly')
         self.simulation_box.configure(state='disabled' if self.busy else 'readonly')
+        self.stiffness_target_entry.configure(state='normal' if not self.busy and self.v['simulation_mode'].get()=='Weight saving + FEA comparison' else 'disabled')
+        target_enabled=not self.busy and self.v['simulation_mode'].get()=='Weight saving + FEA comparison'
+        self.retention_scale.configure(state='normal' if target_enabled else 'disabled')
+        for button in self.retention_presets:button.configure(state='normal' if target_enabled else 'disabled')
+        for button in self.view_buttons:button.configure(state='normal' if self.model else 'disabled')
         if self.v['simulation_mode'].get()!='Weight saving':
             self.search_help.set('FEA simulates every allowed infill combination. This design count controls how many candidates are then compared in OrcaSlicer.')
         else:
             self.search_help.set('More designs give a wider comparison and take longer. This does not certify strength.')
-        if self.v['simulation_mode'].get()!='Weight saving' and not self.sections['simulation']['open']:
+        if self.v['simulation_mode'].get()=='FEA direct search (experimental)' and not self.sections['simulation']['open']:
             self.toggle_section('simulation')
         if self.v['simulation_mode'].get()=='FEA direct search (experimental)' and not self.sections['simulation_absolute']['open']:
             self.toggle_section('simulation_absolute')
         self.generate_button.configure(state='normal' if loaded else 'disabled')
         available=Path(self.v['orca'].get()).is_file() and all(self.v[k].get().strip() for k in ('printer_profile','process_profile','filament_profile'))
-        self.optimize_button.configure(state='normal' if loaded and (available or self.manual.get()) else 'disabled',text='Prepare manual instructions' if self.manual.get() else 'Find a lighter print')
+        self.optimize_button.configure(state='normal' if loaded and (available or self.manual.get()) else 'disabled',text='Prepare manual instructions' if self.manual.get() else 'Optimize Model')
         self.check_button.configure(state='disabled' if self.busy else 'normal');self.cancel_button.configure(state='normal' if self.busy else 'disabled')
         successful=self.report is not None and self.report.get('status')=='AUTOMATED SUCCESS' and not self.busy
-        self.export_button.configure(state='normal' if successful else 'disabled')
+        if successful:
+            try:
+                files=[Path(self.report.get('exports',{}).get(name,'')) for name in ('optimized.gcode','baseline.gcode')]
+                successful=all(path.is_file() and path.stat().st_size>0 for path in files)
+            except OSError:successful=False
+        self.export_status.set('Validated G-code ready to save.' if successful else 'Optimization running…' if self.busy else 'No optimized G-code ready to save.')
+        self.phase.set(self.task_description if self.busy else '04  Print files ready' if successful else '02  Set your goals' if self.model else '01  Add a model')
+        self.export_button.configure(state='normal' if successful else 'disabled',text='Save Optimized G-code…')
         self.open_button.configure(state='normal' if self.report and not self.busy else 'disabled')
         self.refresh_setup_summary()
-        if self.busy:self.next_step.set('Comparing designs and checking the generated print files. You can stop at any time.')
+        if self.busy:self.next_step.set(self.task_description+'. You can stop at any time.')
         elif not self.model:self.next_step.set('Next: add a model or try the example to unlock the comparison.')
         elif not available and not self.manual.get():self.next_step.set('Next: open “Printer setup & troubleshooting” to select OrcaSlicer, or choose manual mode.')
         elif successful:self.next_step.set('Your comparison is ready. Save the print files, or replace the model to try another object.')
@@ -420,37 +639,61 @@ class Application(tk.Tk):
 
     def error(self,exc):self.status.set(str(exc));messagebox.showerror('AeroSlice',str(exc),parent=self)
 
-    def set_model(self,path):
+    def set_model(self,path,loaded_model=None):
         if self.busy:return
         try:
-            model=load_model(path)
+            model=loaded_model if loaded_model is not None else load_model(path)
+            self.motion_panel.invalidate('Waiting: optimize this newly uploaded model to retrieve both sliced masses.')
             self.model=model;self.report=None;self.print_export_folder=None
-            self.result_hint.set('Model ready. Choose your setup and select “Find a lighter print”.')
+            self.clear_sensor_results(clear_readings=True)
+            self.details={key:value for key,value in self.details.items() if key=='printer_check'}
+            for key in ('measured_baseline','measured_adaptive','force','deflection','stiff_mass','conditions'):
+                self.v[key].set('')
+            for key in list(self.figures):
+                if key.startswith('heatmap_'):
+                    canvas=self.figures.pop(key);window=canvas.get_tk_widget().winfo_toplevel()
+                    self.dispose_figure(canvas);window.destroy()
+            self.result_hint.set('Model ready. Choose your setup and select “Optimize Model”.')
             for var in self.metric_vars.values():var.set('—')
+            self.export_status.set('No optimized G-code generated yet.')
             self.dashboard_write('A new model is ready: '+model.path.name+'\n\nRun a new comparison to see its estimates and save its print files. Previous results remain saved in their original folders.')
             if self.preview_empty.winfo_exists():self.preview_empty.destroy()
             dims=' × '.join(f'{x:.2f}' for x in model.dimensions)
-            self.model_info.set(f'{model.path.name}\nSize: {dims} mm · {model.kind}\n'+ '\n'.join(model.warnings))
-            fig=Figure(figsize=(5,3),layout='constrained');ax=fig.add_subplot(projection='3d')
+            name=model.path.name if len(model.path.name)<=52 else model.path.name[:24]+'…'+model.path.name[-24:]
+            self.model_info.set(f'{name}\n{dims} mm · {model.kind} · Ready\n'+ '\n'.join(model.warnings))
+            fig=Figure(figsize=(6,4),facecolor='#f8fafc');ax=fig.add_axes((0,0,1,1),projection='3d',facecolor='#f8fafc')
             # Preview decimation is visual only; optimization uses the full mesh.
             triangles=model.triangles[::max(1,len(model.triangles)//3000)]
             ax.add_collection3d(Poly3DCollection(triangles,facecolor='#38bdf8',edgecolor='#0369a1',linewidth=.15,alpha=.75))
             lo,hi=model.bounds
             ax.set(xlim=(lo[0],hi[0]),ylim=(lo[1],hi[1]),zlim=(lo[2],hi[2]),xlabel='X (mm)',ylabel='Y (mm)',zlabel='Z (mm)');ax.set_box_aspect(model.dimensions)
+            for index,label in enumerate('XYZ'):
+                direction=np.zeros(3);direction[index]=model.dimensions[index]*.25
+                color=('#0369a1','#0d9488','#64748b')[index]
+                ax.quiver(*lo,*direction,color=color,linewidth=2,arrow_length_ratio=.2)
+                ax.text(*(lo+direction*1.15),label,color=color,fontsize=9,weight='bold')
+            ax.set_axis_off();ax.set_proj_type('ortho');ax.view_init(elev=25,azim=-40)
             self.show_figure('preview',self.preview_container,fig)
+            self.figures['preview'].get_tk_widget()._viewport=True
+            self.figures['preview'].get_tk_widget().configure(width=1,height=1)
+            self.fit_preview()
+            self.figures['preview'].mpl_connect('scroll_event',self.zoom_preview)
             self.status.set('Model ready. Choose your setup, then find a lighter print.');self.tree.delete(*self.tree.get_children());self.update_actions()
         except Exception as exc:self.error(exc)
 
     def upload_model(self):
+        if self.busy:return
         path=filedialog.askopenfilename(title='Choose the object you want to print',filetypes=[('3D models','*.stl *.STL *.3mf *.3MF')])
-        if path:self.set_model(path)
+        if path:
+            self.status.set('Loading and checking the uploaded mesh…')
+            self.worker(lambda:{'kind':'model','model':load_model(path)},'Loading and checking model')
     def demo_model(self):self.set_model(self.examples/'demo_payload.stl')
     def choose_executable(self):
         p=filedialog.askopenfilename(title='Choose OrcaSlicer executable',initialdir='/Applications/OrcaSlicer.app/Contents/MacOS')
         if p:self.v['orca'].set(p);self.update_actions()
     def choose_profiles_root(self):
         p=filedialog.askdirectory(title='Choose OrcaSlicer profiles folder')
-        if p:self.v['profile_root'].set(p)
+        if p:self.v['profile_root'].set(p);self.update_actions()
     def choose_profile(self,key):
         p=filedialog.askopenfilename(title='Select profile JSON',filetypes=[('Profile JSON','*.json')])
         if p:self.v[key].set(p);self.update_actions()
@@ -460,19 +703,28 @@ class Application(tk.Tk):
 
     def save_preferences(self):
         for key in ('printer_profile','process_profile','filament_profile','profile_root'):self.config_data[key]=self.v[key].get()
+        for key in ('simulation_mode','contact_axis','contact_face','fea_force_axis'):self.config_data[key]=self.v[key].get()
         self.config_data['output_folder']=self.v['output'].get()
         self.config_data['candidate_count']=int(self.v['candidate_count'].get())
+        try:retention=float(self.v['fea_retention'].get())
+        except ValueError:retention=95.
+        self.config_data['stiffness_retention_percent']=retention if math.isfinite(retention) and 0<retention<=100 else 95.
         self.config_data['orca_executable']=self.v['orca'].get();self.config_path.parent.mkdir(parents=True,exist_ok=True)
         self.config_path.write_text(json.dumps(self.config_data,indent=2))
 
-    def worker(self,operation):
+    def worker(self,operation,description='Comparing designs and checking print files'):
+        if self.busy:return
         # Closed Tk windows can leave Python reference cycles. Reclaim them
         # on the Tk thread before allocation-heavy background work can trigger
         # collection and finalize a Tcl interpreter on the wrong thread.
         gc.collect()
-        self.busy=True;self.cancel.clear();self.progress_bar.start();self.update_actions()
+        self.busy=True;self.task_description=description;self.cancel.clear();self.progress_bar.pack(fill='x',pady=5);self.progress_bar.start();self.update_actions()
         def run():
-            try:self.queue.put(('complete',operation()))
+            try:
+                value=operation()
+                if isinstance(value,dict) and value.get('kind') in ('model','candidates') and self.cancel.is_set():
+                    raise ValueError('Operation cancelled. The previous model was preserved.')
+                self.queue.put(('complete',value))
             except Exception as exc:self.queue.put(('error',str(exc)))
         # Keep the worker alive long enough to terminate Orca and write its report
         # if the window closes during slicing. No Tk calls occur in this thread.
@@ -480,7 +732,7 @@ class Application(tk.Tk):
         self.worker_thread.start()
 
     def generate(self):
-        if not self.model:return
+        if not self.model or self.busy:return
         try:
             settings=self.settings();model=self.model;simulation=self.v['simulation_mode'].get()!='Weight saving'
             def operation():
@@ -492,21 +744,30 @@ class Application(tk.Tk):
                     notes=['Direct-search density grid preview only. No FEA or slicing has been performed.']
                 else:candidates=generate_candidates(regions,settings)
                 return {'kind':'candidates','regions':regions,'candidates':candidates,'notes':notes}
-            self.worker(operation)
+            self.worker(operation,'Preparing engineering recommendations')
         except Exception as exc:self.error(exc)
 
     def start_optimization(self):
-        if not self.model:return
+        if not self.model or self.busy:return
         try:
-            settings=self.settings();fea=self.fea_settings();model=self.model;slicer=self.slicer();profiles=self.profiles();output=Path(self.v['output'].get());manual=self.manual.get()
+            settings=self.settings();manual=self.manual.get();fea=None if manual else self.fea_settings()
+            model=self.model;slicer=self.slicer();profiles=self.profiles();output=Path(self.v['output'].get())
             self.save_preferences()
-            self.worker(lambda:optimize(model,settings,output,slicer,profiles,lambda msg:self.queue.put(('progress',msg)),manual,fea))
+            self.motion_panel.invalidate('Waiting: slicing original and optimized designs for this model…')
+            self.report=None;self.print_export_folder=None;self.tree.delete(*self.tree.get_children())
+            for var in self.metric_vars.values():var.set('—')
+            self.details.pop('candidate_preview',None);self.details.pop('manual_comparison',None)
+            self.result_hint.set('Optimization in progress; estimates will appear after completed slicing.')
+            self.dashboard_write('COMPARISON IN PROGRESS\nWaiting for completed slices for '+model.path.name+'.')
+            progress=lambda msg:self.queue.put(('progress',msg))
+            self.worker(lambda:optimize(model,settings,output,slicer,profiles,progress,manual,fea))
         except Exception as exc:self.error(exc)
 
     def check_compatibility(self):
+        if self.busy:return
         try:
             slicer=self.slicer();profiles=self.profiles();output=Path(self.v['output'].get());model=load_model(self.examples/'demo_payload.stl')
-            self.worker(lambda:{'kind':'compatibility','result':optimize(model,Settings(candidate_count=3),output,slicer,profiles,lambda msg:self.queue.put(('progress','Compatibility: '+msg)))})
+            self.worker(lambda:{'kind':'compatibility','result':optimize(model,Settings(candidate_count=3),output,slicer,profiles,lambda msg:self.queue.put(('progress','Compatibility: '+msg)))},'Checking printer setup')
         except Exception as exc:self.error(exc)
 
     def poll(self):
@@ -515,10 +776,12 @@ class Application(tk.Tk):
                 kind,value=self.queue.get_nowait()
                 if kind=='progress':self.status.set(self.friendly_progress(value))
                 elif kind=='error':
-                    self.busy=False;self.progress_bar.stop();self.update_actions();self.error(value)
+                    self.busy=False;self.progress_bar.stop();self.progress_bar.pack_forget();self.update_actions();self.motion_panel.refresh();self.error(value)
                 elif kind=='complete':
-                    self.busy=False;self.progress_bar.stop()
-                    if value.get('kind')=='candidates':
+                    self.busy=False;self.progress_bar.stop();self.progress_bar.pack_forget()
+                    if value.get('kind')=='model':
+                        self.set_model(value['model'].path,value['model'])
+                    elif value.get('kind')=='candidates':
                         self.tree.delete(*self.tree.get_children())
                         for i,c in enumerate(value['candidates']):self.tree.insert('', 'end',values=(self.design_name(c.id,i),'—','—','Not sliced'))
                         self.details['candidate_preview']={'candidates':[asdict(c) for c in value['candidates']],'assumptions':value['notes']}
@@ -538,6 +801,7 @@ class Application(tk.Tk):
                 kind,value=self.recorder.messages.get_nowait()
                 if kind=='reading':self.sensor_label.set(f'Live sensor: {value.timestamp_ms:g} ms • {value.distance_mm} mm • {value.error or "valid"}')
                 elif kind=='error':self.sensor_label.set('Sensor error: '+str(value))
+                elif kind=='info':self.sensor_label.set('Sensor: '+str(value))
         except Empty:pass
         self.after(100,self.poll)
 
@@ -572,7 +836,12 @@ class Application(tk.Tk):
         window.protocol('WM_DELETE_WINDOW',dismiss)
 
     def show_report(self,report):
+        if self.model is not None and report.get('input_sha256')!=self.model.sha256:
+            self.status.set('Ignored results from a different model. Optimize the current uploaded model.')
+            return
         self.print_export_folder=None;self.open_button.configure(text='Open working folder')
+        for var in self.metric_vars.values():var.set('—')
+        self.export_status.set('No optimized G-code generated yet.')
         self.report=report;self.tree.delete(*self.tree.get_children())
         for i,c in enumerate(report['candidates']):
             m=c.get('metrics',{});selected=c['id']==report.get('selected')
@@ -587,6 +856,15 @@ class Application(tk.Tk):
             self.metric_vars['before'].set(f"{before['mass_g']:.2f} g")
             self.metric_vars['after'].set(f"{after['mass_g']:.2f} g")
             self.metric_vars['saving'].set(f'{saving:.1f}%')
+            prediction=report.get('fea_selected')
+            if prediction:
+                row=selected.get('fea') or {}
+                ratios=[row.get(mesh,{}).get('relative_stiffness_ratio') for mesh in ('coarse','refined')]
+                ratios=[ratio for ratio in ratios if ratio is not None]
+                retention=min(ratios) if ratios else prediction.get('relative_stiffness_ratio')
+                self.metric_vars['stiffness'].set(f'{100*retention:.1f}%' if retention is not None else 'Not assessed')
+
+            else:self.metric_vars['stiffness'].set('Not assessed')
             self.status.set('Comparison complete. Your print files are ready to save.')
             hint=f"Estimated print time: {self.print_time(before['time_s'])} originally → {self.print_time(after['time_s'])} for the selected design."
             if saving<=0:hint+=' This search did not reduce material use.'
@@ -613,31 +891,42 @@ class Application(tk.Tk):
             search=report['fea'];prediction=report.get('fea_selected')
             lines+=['','FEA DIRECT SEARCH · PREDICTIONS, PHYSICALLY UNVALIDATED',
                     f"Tested {search['combinations_tested']} combinations; {search['feasible_count']} passed both mesh resolutions.",
+                    f"Mesh accuracy checks: {search.get('mesh_pass_count', 'unknown')} passed. Assessment target: {search.get('assessment_pass_count', 'unknown')} passed (before mesh accuracy checks).",
                     ('Normalized reference load for comparison; actual thrust is not an input.' if search['inputs']['assessment']=='relative_stiffness' else f"Load: {search['inputs']['force_n']:g} N along {search['inputs']['force_axis'].upper()}."),
                     f"Support assumption: full {search['support_axis'].upper()} {search['support_face']} face clamped; comparison direction {search['inputs']['force_axis'].upper()}.",
                     'Material input source: '+search['inputs']['material_source']]
             if prediction:
                 if search['inputs']['assessment']=='relative_stiffness':
-                    lines += [f"Selected predicted relative stiffness: {100*prediction['relative_stiffness_ratio']:.1f}% of baseline (target {100*search['inputs']['minimum_stiffness_ratio']:.1f}%).",
+                    lines += [f"Selected predicted relative stiffness: {self.metric_vars['stiffness'].get()} of baseline (target {100*search['inputs']['minimum_stiffness_ratio']:.1f}%).",
                               'Absolute strength and thrust performance were not assessed. fea_selected.png shows illustrative reference-load fields.']
                 else:
                     lines += [f"Selected predicted displacement: {prediction['max_displacement_mm']:.5g} mm.",
                               f"Selected screening stress utilization: {prediction['screening_utilization']:.3f} (limit 1).",
                               'See fea_selected.png for stress and displacement maps. No physical strength or failure load was verified.']
         self.dashboard_write('\n'.join(lines))
+        self.motion_panel.refresh()
         if status=='FAILED':
-            self.book.select(self.dashboard_tab)
+            self.book.select(self.dashboard_page)
             messagebox.showerror('Comparison needs attention',report['message'],parent=self)
 
     def export_files(self):
-        if not self.report or self.report['status']!='AUTOMATED SUCCESS':return
+        if self.busy or not self.report or self.report['status']!='AUTOMATED SUCCESS':return
         destination=filedialog.askdirectory(title='Save optimized G-code and comparison reports')
         if not destination:return
+        created=None
         try:
+            if self.model is None or self.report.get('input_sha256')!=self.model.sha256:
+                raise ValueError('Optimize the current uploaded model before exporting its G-code.')
+            self.model.verify_original()
+            for name in ('baseline.gcode','optimized.gcode'):
+                path=Path(self.report.get('exports',{}).get(name,''))
+                if not path.is_file() or not path.stat().st_size:
+                    raise ValueError('Completed G-code is missing or empty. Run optimization again before exporting.')
             source=Path(self.report['run_directory']);target=Path(destination)/source.name
             if target.resolve()==source.resolve():
                 raise ValueError('Choose a different folder for the G-code export. This folder holds internal slicer working files.')
             target.mkdir()
+            created=target
             # Save only the validated G-code and readable reports. Internal
             # slicer projects, candidate folders and setup files stay in work.
             for name in ('baseline.gcode','optimized.gcode'):
@@ -648,7 +937,9 @@ class Application(tk.Tk):
                 if (source/name).is_file():shutil.copy2(source/name,target/name)
             self.print_export_folder=target;self.open_button.configure(text='Open saved folder')
             self.status.set(f'G-code saved to {target}. Review optimized.gcode in a G-code preview before printing.')
-        except Exception as exc:self.error(exc)
+        except Exception as exc:
+            if created is not None:shutil.rmtree(created)
+            self.update_actions();self.error(exc)
     def open_output(self):
         if self.report:subprocess.Popen(['open',str(self.print_export_folder or self.report['run_directory'])])
 
@@ -669,6 +960,31 @@ class Application(tk.Tk):
             self.status.set('Imported estimates are ready in Your results. Model and regional settings have not been verified.')
         except Exception as exc:self.error(exc)
 
+    def refresh_ports(self):
+        try:
+            available=ports();self.port_box.configure(values=available)
+            if self.v['port'].get() not in available:self.v['port'].set('')
+            if not available:self.sensor_label.set('No serial ports detected. CSV import and physics simulation remain available.')
+        except Exception as exc:self.error(exc)
+
+    def clear_sensor_results(self,clear_readings=False):
+        self.trials=[];self.summary=None;self.details.pop('climb_analysis',None)
+        ranges=self.dashboard_text.tag_ranges('climb_analysis')
+        if ranges:
+            self.dashboard_text.configure(state='normal')
+            for i in range(len(ranges)-2,-1,-2):self.dashboard_text.delete(ranges[i],ranges[i+1])
+            self.dashboard_text.configure(state='disabled')
+        self.trial_box.set('');self.trial_box.configure(values=[])
+        for key in ('motion','comparison'):
+            canvas=self.figures.pop(key,None)
+            if canvas:self.dispose_figure(canvas)
+        if clear_readings:
+            try:self.recorder.stop()
+            except Exception as exc:self.sensor_label.set('Sensor disconnected: '+str(exc))
+            self.recorder.readings.clear();self.readings=[]
+            self.v['start_mm'].set('');self.v['end_mm'].set('')
+            self.sensor_label.set('No readings for this model. Import CSV or record a new trial.')
+
     def configure_sensor(self):
         try:
             self.recorder.configure(int(self.v['trigger_pin'].get()),int(self.v['echo_pin'].get()),int(self.v['interval_ms'].get()))
@@ -687,11 +1003,13 @@ class Application(tk.Tk):
     def upload_sensor(self):
         path=filedialog.askopenfilename(title='Upload sensor readings',filetypes=[('Sensor CSV','*.csv')])
         if not path:return
+        self.clear_sensor_results();self.readings=[]
         try:self.readings=read_csv(path);self.process_sensor()
         except Exception as exc:self.error(exc)
     def demo_sensor(self):
         self.readings=synthetic_readings();self.v['start_mm'].set('750');self.v['end_mm'].set('300');self.process_sensor();self.analyze_sensor()
     def process_sensor(self):
+        self.clear_sensor_results()
         try:
             low=float(self.v['sensor_min'].get()) if self.v['sensor_min'].get().strip() else None
             high=float(self.v['sensor_max'].get()) if self.v['sensor_max'].get().strip() else None
@@ -699,15 +1017,16 @@ class Application(tk.Tk):
             variants=sorted({t.variant for t in self.trials});self.baseline_variant_box.configure(values=variants)
             if self.v['baseline_variant'].get() not in variants:self.v['baseline_variant'].set('')
             self.trial_box.configure(values=[f'{t.variant} / {t.trial_id}' for t in self.trials]);self.trial_box.current(0);self.show_trial()
-        except Exception as exc:self.error(exc)
+            return True
+        except Exception as exc:self.error(exc);return False
     def show_trial(self):
         if not self.trials:return
-        trial=self.trials[max(0,self.trial_box.current())]
+        trial=self.trials[min(len(self.trials)-1,max(0,self.trial_box.current()))]
         self.show_figure('motion',self.motion_container,motion_figure(trial));self.sensor_label.set(trial.source+' • '+trial.processing+' • '+' '.join(trial.warnings))
     def analyze_sensor(self):
         try:
             if not self.readings:raise ValueError('Upload CSV or record readings first.')
-            self.process_sensor()
+            if not self.process_sensor():return
             if not self.v['baseline_variant'].get():raise ValueError('Choose which CSV design label represents your original print, then compare again.')
             self.summary=summarize(self.trials,float(self.v['start_mm'].get()),float(self.v['end_mm'].get()),float(self.v['max_gap'].get()),self.v['baseline_variant'].get(),self.paired.get())
             self.details['climb_analysis']=self.summary
@@ -717,7 +1036,7 @@ class Application(tk.Tk):
             for row in self.summary['comparisons']:
                 lines.append(f"{row['variant']}: {row['improvement_percent']:.1f}% change in climb time. {row['conclusion']}")
             lines+=self.summary['warnings']
-            self.dashboard_write('\n'.join(lines),append=True)
+            self.dashboard_write('\n'.join(lines),append=True,section='climb_analysis')
             self.show_figure('comparison',self.comparison_container,comparison_figure(self.summary));self.sensor_label.set(('SYNTHETIC DEMONSTRATION DATA · ' if any('SYNTHETIC' in t.source for t in self.trials) else 'User-supplied measurements · ')+'Comparison ready in Your results. '+' '.join(self.summary['warnings']))
         except Exception as exc:self.error(exc)
     def save_sensor(self):
@@ -759,10 +1078,13 @@ class Application(tk.Tk):
             if self.report:self.report['stiffness']=result;write_reports(Path(self.report['run_directory']),self.report)
         except Exception as exc:self.error(exc)
     def close(self):
+        self.motion_panel.close()
         self.cancel.set();self.recorder.disconnect()
+        worker=getattr(self,'worker_thread',None)
+        if worker and worker.is_alive():worker.join(timeout=.5)
         for canvas in self.figures.values():self.dispose_figure(canvas)
         self.figures.clear()
         self.destroy()
         self.v.clear();self.metric_vars.clear()
-        for name in ('status','model_info','sensor_label','manual','smooth','paired','setup_summary','search_choice','search_help','next_step','result_hint','material_choice'):
+        for name in ('status','model_info','sensor_label','manual','smooth','paired','setup_summary','search_choice','search_help','next_step','result_hint','material_choice','phase'):
             setattr(self,name,None)

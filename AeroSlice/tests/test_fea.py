@@ -77,6 +77,23 @@ def test_cancellation_and_disconnected_mesh():
     with pytest.raises(ValueError,match='disconnected'):VoxelFEA(triangles,isotropic(),cells=12)
 
 
+def test_default_mesh_resolves_one_inch_cube_shell_comparison():
+    """Regression: the six-cell mesh rejected even the reference cube."""
+    from AeroSlice.structural import weight_saving_settings
+    triangles=box_mesh(np.zeros(3),np.full(3,25.4))
+    fea=FEASettings(assessment='relative_stiffness',force_n=1,
+                    shell_mm=(.87,.87,.87,.87,.6,1.))
+    result,_=direct_search(triangles,weight_saving_settings(),fea,Event(),lambda _:None)
+    baseline=next(row for row in result['candidates'] if row['densities']==[15.,15.,15.])
+    assert baseline['mesh_check_pass'] and baseline['feasible']
+    assert result['mesh_pass_count']>0 and result['assessment_pass_count']>0
+    assert any(row['feasible'] and sum(row['densities'])<45 for row in result['candidates'])
+    for row in result['candidates']:
+        if row['feasible']:
+            assert min(row['coarse']['relative_stiffness_ratio'],row['refined']['relative_stiffness_ratio'])>=.95
+    assert not next(row for row in result['candidates'] if row['densities']==[10.,5.,15.])['feasible']
+
+
 @pytest.mark.parametrize('changes',[{'force_n':0},{'e_z_mpa':-1},{'mesh_cells':3},{'mesh_tolerance':0},{'force_n':float('nan')},{'material_source':''},{'safety_factor':.5}])
 def test_invalid_inputs(changes):
     with pytest.raises(ValueError):replace(isotropic(),**changes).validate()

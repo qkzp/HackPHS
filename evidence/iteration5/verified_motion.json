@@ -1,0 +1,26 @@
+{
+  "run_directory": "/Users/akhil/Desktop/mainhackathon/outputs/AeroSlice-20261011T104646-24000",
+  "assumptions": {
+    "thrust_n": 1.5,
+    "fixed_mass_g": 100.0,
+    "friction_n": 0.05,
+    "assembly_area_m2": 0.01,
+    "drag_coefficient": 1.0,
+    "air_density_kg_m3": 1.225,
+    "target_height_m": 1.0,
+    "duration_s": 30.0,
+    "gravity_m_s2": 9.80665
+  },
+  "geometry_facets": 20,
+  "baseline_mass_g": 6.97,
+  "optimized_mass_g": 6.3,
+  "original_time_s": 0.7374279837438009,
+  "optimized_time_s": 0.729208889384412,
+  "time_reduction_percent": 1.1145623085337704,
+  "projection": {
+    "area_mm2": 499.21875,
+    "coarse_fine_difference_mm2": 2.34375,
+    "axis": "z",
+    "method": "Actual projected triangle union; 256-scanline numerical approximation; not used for enclosed-payload drag."
+  }
+}
