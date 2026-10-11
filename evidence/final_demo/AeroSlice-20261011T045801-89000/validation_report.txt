@@ -1,0 +1,22 @@
+Status: AUTOMATED SUCCESS
+Lightest candidate satisfying the selected heuristic and slicing constraints. Structural stiffness has not been independently verified.
+
+Validation:
+baseline: PASS  {"external_toolpath_bounds_preserved": true, "infill_geometry_verified": true, "changed_regions": [], "target_regions": [], "valid": true, "note": "Positive-extrusion sparse-infill XYZ segments compared; no E scaling or flow edits.", "external_mesh_preserved": true, "modifier_densities_preserved": true, "non_target_settings_preserved": true, "prepared_project_mesh_preserved": true}
+uniform_lightweight: PASS  {"external_toolpath_bounds_preserved": true, "infill_geometry_verified": true, "changed_regions": [0, 1, 2], "target_regions": [0, 1, 2], "valid": true, "note": "Positive-extrusion sparse-infill XYZ segments compared; no E scaling or flow edits.", "external_mesh_preserved": true, "modifier_densities_preserved": true, "non_target_settings_preserved": true, "prepared_project_mesh_preserved": true}
+adaptive_02: PASS  {"external_toolpath_bounds_preserved": true, "infill_geometry_verified": true, "changed_regions": [1, 2], "target_regions": [1, 2], "valid": true, "note": "Positive-extrusion sparse-infill XYZ segments compared; no E scaling or flow edits.", "external_mesh_preserved": true, "modifier_densities_preserved": true, "non_target_settings_preserved": true, "prepared_project_mesh_preserved": true}
+adaptive_03: PASS  {"external_toolpath_bounds_preserved": true, "infill_geometry_verified": true, "changed_regions": [0, 1, 2], "target_regions": [0, 1, 2], "valid": true, "note": "Positive-extrusion sparse-infill XYZ segments compared; no E scaling or flow edits.", "external_mesh_preserved": true, "modifier_densities_preserved": true, "non_target_settings_preserved": true, "prepared_project_mesh_preserved": true}
+adaptive_04: PASS  {"external_toolpath_bounds_preserved": true, "infill_geometry_verified": true, "changed_regions": [1, 2], "target_regions": [1, 2], "valid": true, "note": "Positive-extrusion sparse-infill XYZ segments compared; no E scaling or flow edits.", "external_mesh_preserved": true, "modifier_densities_preserved": true, "non_target_settings_preserved": true, "prepared_project_mesh_preserved": true}
+adaptive_05: PASS  {"external_toolpath_bounds_preserved": true, "infill_geometry_verified": true, "changed_regions": [0, 2], "target_regions": [0, 2], "valid": true, "note": "Positive-extrusion sparse-infill XYZ segments compared; no E scaling or flow edits.", "external_mesh_preserved": true, "modifier_densities_preserved": true, "non_target_settings_preserved": true, "prepared_project_mesh_preserved": true}
+
+Assumptions and limitations:
+STL units assumed millimeters.
+Structural-demand analysis is a heuristic and has not been validated as a full stress simulation.
+Contact assumption: full selected bounding-box face; orientation follows the configured print rotation.
+Occupancy-grid volume fractions are heuristic, not measured printed mass.
+Expected load magnitude proxy: |9.80665 + acceleration|; no strength threshold is inferred.
+Axial distributed-load proxy: occupied volume beyond each slab midplane towards the unsupported face.
+Slabs share boundaries but have no positive-volume overlaps; arbitrary overlapping modifiers are unsupported.
+Structural stiffness has not been independently verified.
+Guided vertical travel is not free flight. Lower mass alone does not establish reduced drag or increased stiffness.
+Physical printer and rig testing: NOT TESTED.

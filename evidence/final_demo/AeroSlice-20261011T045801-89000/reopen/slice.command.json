@@ -1,0 +1,14 @@
+[
+  "/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer",
+  "--orient",
+  "0",
+  "--arrange",
+  "0",
+  "--slice",
+  "0",
+  "--export-3mf",
+  "verified.3mf",
+  "--outputdir",
+  "/Users/akhil/Desktop/mainhackathon/evidence/final_demo/AeroSlice-20261011T045801-89000/reopen",
+  "/Users/akhil/Desktop/mainhackathon/evidence/final_demo/AeroSlice-20261011T045801-89000/candidates/adaptive_02/sliced/adaptive_02.3mf"
+]

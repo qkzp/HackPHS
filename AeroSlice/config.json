@@ -1,0 +1,13 @@
+{
+  "orca_executable": "/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer",
+  "profile_root": "",
+  "printer_profile": "Flashforge Adventurer 5M 0.4 Nozzle",
+  "process_profile": "0.20mm Standard @Flashforge AD5M 0.4 Nozzle",
+  "filament_profile": "Flashforge Generic PLA",
+  "slicer_timeout_s": 180,
+  "sensor_min_mm": null,
+  "sensor_max_mm": null,
+  "sensor_baud": 115200,
+  "sensor_interval_ms": 100,
+  "density_set": [10, 15, 20, 25, 30]
+}

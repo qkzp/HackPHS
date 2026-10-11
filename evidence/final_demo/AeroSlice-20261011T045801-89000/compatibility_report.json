@@ -1,0 +1,72 @@
+{
+  "os": "macOS-26.6.2-arm64-arm-64bit",
+  "python": "3.12.4",
+  "executable": "/Applications/OrcaSlicer.app/Contents/MacOS/OrcaSlicer",
+  "profile_root": "/Applications/OrcaSlicer.app/Contents/Resources/profiles",
+  "checks": {
+    "cli": {
+      "status": "PASS",
+      "detail": "OrcaSlicer-2.4.2"
+    },
+    "required_flags": {
+      "status": "PASS",
+      "detail": [
+        "--load-settings",
+        "--load-filaments",
+        "--export-3mf",
+        "--outputdir",
+        "--slice",
+        "--orient",
+        "--arrange"
+      ]
+    },
+    "profile_discovery": {
+      "status": "PASS",
+      "detail": 11455
+    },
+    "baseline_slicing": {
+      "status": "PASS",
+      "detail": "adaptive_02"
+    },
+    "modifiers": {
+      "status": "PASS",
+      "detail": "adaptive_02"
+    },
+    "candidate_slicing": {
+      "status": "PASS",
+      "detail": "adaptive_02"
+    },
+    "toolpath_changes": {
+      "status": "PASS",
+      "detail": "adaptive_02"
+    },
+    "geometry_preservation": {
+      "status": "PASS",
+      "detail": "adaptive_02"
+    },
+    "settings_preservation": {
+      "status": "PASS",
+      "detail": "adaptive_02"
+    },
+    "project_reopening": {
+      "status": "PASS",
+      "detail": "adaptive_02"
+    },
+    "material_estimates": {
+      "status": "PASS",
+      "detail": "adaptive_02"
+    },
+    "physical_printer": {
+      "status": "NOT TESTED"
+    },
+    "profiles": {
+      "status": "PASS",
+      "detail": {
+        "machine": "Flashforge Adventurer 5M 0.4 Nozzle",
+        "process": "0.20mm Standard @Flashforge AD5M 0.4 Nozzle",
+        "filament": "Flashforge Generic PLA"
+      }
+    }
+  },
+  "orca_version": "OrcaSlicer-2.4.2"
+}
