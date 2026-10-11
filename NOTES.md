@@ -60,3 +60,11 @@ export tests also ran. Sensor demonstration results are explicitly synthetic.
 - Complete diagnostic data remains accessible in technical details and run reports.
 - Sensor results remain explicitly measured/user-supplied or synthetic. No hardware
   validation or stiffness claims were added by this interface change.
+
+## Iteration 2 G-code exports
+
+STL input can be optimized directly into `optimized.gcode`, with `baseline.gcode`
+for comparison. Native 3MF projects remain internal slicing/validation artifacts.
+The Save G-code action copies only validated G-code and comparison reports,
+excluding all intermediate project, model, setup and log files. Original inputs
+are preserved; unit interpretation and structural limitations are unchanged.

@@ -56,7 +56,17 @@ def test_upload_optimize_export_through_gui(cube,tmp_path,monkeypatch):
         monkeypatch.setattr(filedialog,'askdirectory',lambda **kwargs:str(destination))
         app.export_button.invoke();app.update()
         assert len(list(destination.rglob('optimized.gcode')))==1
-        assert len(list(destination.rglob('optimized.3mf')))==1
+        assert len(list(destination.rglob('baseline.gcode')))==1
+        assert not list(destination.rglob('*.3mf'))
+        assert not list(destination.rglob('payload.stl'))
+        assert len(list(destination.rglob('report.json')))==1
+        saved=next(destination.rglob('optimized.gcode'))
+        assert saved.read_bytes()==Path(app.report['exports']['optimized.gcode']).read_bytes()
+        assert app.print_export_folder==saved.parent
+        opened=[]
+        monkeypatch.setattr('AeroSlice.gui.subprocess.Popen',lambda command:opened.append(command))
+        app.open_button.invoke()
+        assert opened==[['open',str(saved.parent)]]
     finally:app.close()
 
 @pytest.mark.gui

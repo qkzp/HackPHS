@@ -169,8 +169,9 @@ def optimize(model: Model, settings: Settings, output: Path, slicer: OrcaSlicer,
             raise ValueError('Selected project failed reproducible reopening / reslicing.')
         if project_contract(reopened)['geometry']!=original_digest: raise ValueError('Reopened project changed geometry.')
         model.verify_original()
-        for source,name in [(report['candidates'][0]['project'],'baseline.3mf'),(report['candidates'][0]['gcode'],'baseline.gcode'),
-                            (selected['project'],'optimized.3mf'),(selected['gcode'],'optimized.gcode')]:
+        # Native projects remain internal validation artifacts, not print exports.
+        for source,name in [(report['candidates'][0]['gcode'],'baseline.gcode'),
+                            (selected['gcode'],'optimized.gcode')]:
             target=work/name;shutil.copy2(source,target)
             if target.stat().st_size==0: raise ValueError(f'Export is empty: {target}')
             report['exports'][name]=str(target)
