@@ -41,6 +41,7 @@ class OrcaSlicer:
         self.timeout=timeout
         self.cancel=cancel or Event()
         self.index: dict[str,Path]={}
+        self.profile_paths: dict[str,list[Path]]={}
         self.version='NOT TESTED'
         self.help=''
 
@@ -80,10 +81,13 @@ class OrcaSlicer:
             for flag in REQUIRED_FLAGS:
                 if flag not in self.help: raise ValueError(f'Installed OrcaSlicer does not advertise {flag}.')
             checks['required_flags']={'status':'PASS','detail':list(REQUIRED_FLAGS)}
+            self.index.clear();self.profile_paths.clear()
             for path in self.root.rglob('*.json'):
                 try:
                     value=json.loads(path.read_text())
-                    if 'name' in value: self.index.setdefault(value['name'],path)
+                    if 'name' in value:
+                        self.index.setdefault(value['name'],path)
+                        self.profile_paths.setdefault(value['name'],[]).append(path)
                 except (OSError,ValueError): continue
             if not self.index: raise ValueError('No printer/process/filament profiles found. Select the profiles directory.')
             checks['profile_discovery']={'status':'PASS','detail':len(self.index)}
@@ -94,8 +98,24 @@ class OrcaSlicer:
     def resolve(self, name: str, seen: tuple[str,...] = ()) -> dict:
         path=Path(name).expanduser()
         if not path.is_file():
-            if name not in self.index: raise ValueError(f'Profile not found: {name}')
-            path=self.index[name]
+            choices=self.profile_paths.get(name,[])
+            if seen:
+                parent=Path(seen[-1])
+                # Vendors reuse names such as fdm_process_common. Inherit
+                # inside the selected profile's directory/vendor, never the
+                # first global name match returned by filesystem traversal.
+                local=parent.parent/(name+'.json')
+                if local.is_file():choices=[local]
+                else:
+                    same_directory=[p for p in choices if p.parent==parent.parent]
+                    same_vendor=[p for p in choices if p.parent.parent==parent.parent.parent]
+                    choices=same_directory or same_vendor or choices
+            if not choices:
+                if name not in self.index:raise ValueError(f'Profile not found: {name}')
+                choices=[self.index[name]]
+            if len(choices)!=1:raise ValueError(f'Ambiguous profile inheritance: {name}. Choose an explicit profile file with a vendor-specific parent.')
+            path=choices[0]
+        path=path.resolve()
         if str(path) in seen: raise ValueError('Circular profile inheritance.')
         data=json.loads(path.read_text())
         result=self.resolve(data['inherits'],seen+(str(path),)) if data.get('inherits') else {}

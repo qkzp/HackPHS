@@ -191,6 +191,10 @@ def optimize(model: Model, settings: Settings, output: Path, slicer: OrcaSlicer,
         selected=min(good,key=rank)
         if selected['id']=='baseline':
             raise ValueError('The uniform baseline is the lightest feasible sliced candidate. No improved optimized export is available for these settings.')
+        weight_first=fea is None or fea.assessment=='relative_stiffness'
+        if weight_first and selected['metrics']['mass_g']>=base_metrics.mass_g:
+            raise ValueError(f"No lighter print found: baseline {base_metrics.mass_g:.2f} g; lightest passing candidate {selected['metrics']['mass_g']:.2f} g. "
+                             'No optimized G-code was exported. Review starting infill, regional minimums and any relative-stiffness target; these rules can require more material than the baseline.')
         progress('Reopening and reslicing the selected native project to validate reproducibility…')
         reopened,regcode=slicer.slice(Path(selected['project']),work/'reopen','verified')
         repeat=inspect_gcode(regcode,settings.contact_axis)

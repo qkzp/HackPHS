@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
+import gc
 from queue import Queue, Empty
 from threading import Event, Thread
 import json
@@ -176,7 +177,7 @@ class Application(tk.Tk):
         results=ttk.LabelFrame(right,text='3  Compare your results',padding=12);results.pack(fill='x',pady=(0,10))
         metrics=ttk.Frame(results);metrics.pack(fill='x')
         self.metric_vars={}
-        for i,(key,label) in enumerate([('before','Original estimate'),('after','Best design estimate'),('saving','Material saved')]):
+        for i,(key,label) in enumerate([('before','Baseline estimate'),('after','Optimized estimate'),('saving','Material saved')]):
             card=ttk.Frame(metrics);card.grid(row=0,column=i,sticky='nsew',padx=6);metrics.columnconfigure(i,weight=1)
             ttk.Label(card,text=label,style='Hint.TLabel').pack(anchor='w')
             var=self.variable('metric_'+key,'—');self.metric_vars[key]=var
@@ -465,6 +466,10 @@ class Application(tk.Tk):
         self.config_path.write_text(json.dumps(self.config_data,indent=2))
 
     def worker(self,operation):
+        # Closed Tk windows can leave Python reference cycles. Reclaim them
+        # on the Tk thread before allocation-heavy background work can trigger
+        # collection and finalize a Tcl interpreter on the wrong thread.
+        gc.collect()
         self.busy=True;self.cancel.clear();self.progress_bar.start();self.update_actions()
         def run():
             try:self.queue.put(('complete',operation()))
@@ -538,7 +543,7 @@ class Application(tk.Tk):
 
     @staticmethod
     def design_name(candidate_id,index):
-        if candidate_id=='baseline':return 'Original design'
+        if candidate_id=='baseline':return 'Baseline design'
         if candidate_id=='uniform_lightweight':return 'Uniform lighter fill'
         return f'Design {index}'
 
@@ -589,6 +594,12 @@ class Application(tk.Tk):
             lines=['PRINT COMPARISON · ESTIMATES',f"Original: {before['mass_g']:.2f} g of material · {self.print_time(before['time_s'])}",f"Selected: {after['mass_g']:.2f} g of material · {self.print_time(after['time_s'])}",f'Material saved: {saving:.1f}%',
                    '',report['message'],'','WHAT TO DO NEXT','Save G-code and review optimized.gcode in your slicer’s G-code preview before printing. Confirm the selected printer and material match your setup.',
                    'optimized.gcode contains the optimized printer instructions. baseline.gcode is included for comparison. Your original model is unchanged.','No file has been sent to your printer.']
+            process=report.get('resolved_profiles',{}).get('process',{})
+            lines += ['','BASELINE PRINT SETTINGS',
+                      f"Starting infill: {report['settings']['baseline']:g}%. Walls: {process.get('wall_loops','unknown')}. Layer height: {process.get('layer_height','unknown')} mm.",
+                      f"Top / bottom solid layers: {process.get('top_shell_layers','unknown')} / {process.get('bottom_shell_layers','unknown')}. Infill pattern: {process.get('sparse_infill_pattern','unknown')}.",
+                      'Material profile: '+report['profiles']['filament'],
+                      'Weight estimates come directly from OrcaSlicer. Match these settings, model dimensions and material density when comparing with a separately sliced STL. The baseline uses AeroSlice’s selected settings, not your current OrcaSlicer window settings.']
         elif status=='SEMIAUTOMATED':
             self.status.set('Manual steps remain. Suggestions are ready; print files have not been generated.')
             self.result_hint.set('Manual mode: no verified weight estimates or printable files yet. Follow the steps in Your results.')

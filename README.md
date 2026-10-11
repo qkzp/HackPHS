@@ -255,3 +255,11 @@ supports actual loads and absolute screening limits. Neither establishes
 physical strength or actual thruster performance.
 
 See [FEA setup, equations, reports and limitations](AeroSlice/FEA.md).
+
+Printer profiles inherit within their selected vendor; shared base names are
+never resolved by taking a different vendor's first global match. Baseline weight
+uses the selected starting infill and print settings. For a comparison with Orca
+GUI, match infill, walls, solid layers, material density and model dimensions.
+Weight-first mode produces no optimized export when the passing candidates are
+equal to or heavier than the sliced baseline. Regenerate runs created before the
+iteration3 profile-inheritance correction; those may use incorrect base settings.

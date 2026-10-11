@@ -90,3 +90,40 @@ def test_native_project_reimport_and_x_axis_slabs(tmp_path,cube):
     selected=next(c for c in result['candidates'] if c['id']==result['selected'])
     assert selected['validation']['infill_geometry_verified']
     uploaded.verify_original()
+
+@pytest.mark.integration
+def test_weight_first_does_not_export_heavier_candidate(cube,tmp_path):
+    if not Path(DEFAULT_EXECUTABLE).is_file():pytest.skip('Installed OrcaSlicer required')
+    # Starting at 10% conflicts with the default protected 15% first region.
+    # All passing alternatives require more material than the sliced baseline.
+    result=optimize(load_model(cube),Settings(baseline=10,candidate_count=3),tmp_path/'out',OrcaSlicer(),Profiles())
+    assert result['status']=='FAILED',result['message']
+    assert 'No lighter print found' in result['message']
+    assert not result['exports']
+    assert not (Path(result['run_directory'])/'optimized.gcode').exists()
+    assert result['candidates'][0]['metrics']['mass_g']>0
+    assert any(c.get('status')=='PASS' for c in result['candidates'][1:])
+
+
+def test_inheritance_stays_in_selected_vendor(tmp_path):
+    # Deliberately discover a different vendor first with the same parent name.
+    wrong=tmp_path/'Wrong/process';correct=tmp_path/'Flashforge/process'
+    wrong.mkdir(parents=True);correct.mkdir(parents=True)
+    (wrong/'fdm_process_common.json').write_text(json.dumps({'name':'fdm_process_common','wall_loops':'3'}))
+    (correct/'fdm_process_common.json').write_text(json.dumps({'name':'fdm_process_common','wall_loops':'2'}))
+    child=correct/'selected.json';child.write_text(json.dumps({'name':'Selected','inherits':'fdm_process_common','layer_height':'.2'}))
+    slicer=OrcaSlicer(profile_root=str(tmp_path))
+    slicer.index={'fdm_process_common':wrong/'fdm_process_common.json','Selected':child}
+    slicer.profile_paths={'fdm_process_common':[wrong/'fdm_process_common.json',correct/'fdm_process_common.json'],'Selected':[child]}
+    assert slicer.resolve('Selected')['wall_loops']=='2'
+    assert slicer.resolve(str(child))['wall_loops']=='2'
+    with pytest.raises(ValueError,match='Ambiguous'):slicer.resolve('fdm_process_common')
+
+@pytest.mark.integration
+def test_installed_flashforge_base_profile_is_used(tmp_path):
+    if not Path(DEFAULT_EXECUTABLE).is_file():pytest.skip('Installed OrcaSlicer required')
+    slicer=OrcaSlicer();slicer.discover(tmp_path)
+    expected=json.loads((slicer.root/'Flashforge/process/fdm_process_common.json').read_text())
+    resolved=slicer.resolve(Profiles().process)
+    assert resolved['wall_loops']==expected['wall_loops']
+    assert resolved['sparse_infill_density']==expected['sparse_infill_density']

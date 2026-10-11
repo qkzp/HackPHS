@@ -82,3 +82,15 @@ Weight-first scope: no actual thrust input is required. Optional FEA comparison
 uses baseline/candidate compliance ratios under a normalized reference load.
 Its stiffness-retention target is an adjustable assumption, not a physical
 strength guarantee. Absolute strength limits are exclusive to advanced load mode.
+
+## Printer-profile inheritance correction
+
+Iteration3 now resolves inherited profile names within the selected vendor.
+Older global name lookup could inherit Blocks/process/fdm_process_common
+for Flashforge profiles, giving three walls instead of the correct two.
+Historical estimates and compatibility evidence predate this fix; regenerate
+old runs before comparison. For the confirmed 25.4 mm cube, correct Flashforge
+standard settings at their default 15% infill give 6.51 g, matching Orca GUI.
+The app's 20% baseline gives 7.32 g and the 20/10/10% candidate gives 6.20 g.
+These are slicer estimates, not weighed prints. Weight-first mode now rejects
+equal/heavier results even if protected infill floors make the baseline infeasible.
